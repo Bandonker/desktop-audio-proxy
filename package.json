@@ -1,6 +1,6 @@
 {
   "name": "desktop-audio-proxy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A comprehensive audio streaming solution for Tauri and Electron apps that bypasses CORS and WebKit codec issues",
   "main": "dist/index.cjs",
   "module": "dist/index.esm.js",
@@ -53,7 +53,9 @@
     "name": "Bandonker",
     "url": "https://github.com/bandonker"
   },
-  "contributors": ["Bandonker"],
+  "contributors": [
+    "Bandonker"
+  ],
   "funding": {
     "type": "github",
     "url": "https://github.com/sponsors/bandonker"
