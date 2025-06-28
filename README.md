@@ -215,10 +215,6 @@ if (process.env.NODE_ENV === 'development') {
 }
 ```
 
-## Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
-
 ## License
 
 MIT © Bandonker
