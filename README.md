@@ -1,9 +1,34 @@
-# Desktop Audio Proxy
+<p align="center">
+  <img src="assets/logo.png" alt="DAP Logo" width="200"/>
+</p>
 
-This is a comprehensive audio streaming solution for Tauri and Electron applications that bypasses CORS restrictions and handles WebKit codec compatibility issues.
+<h1 align="center">DAP - Desktop Audio Proxy</h1>
 
-[![npm version](https://badge.fury.io/js/desktop-audio-proxy.svg)](https://badge.fury.io/js/desktop-audio-proxy)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<hr style="width:60%; margin: 1rem auto; border-top: 1px solid #444;">
+
+<p align="center" style="font-size:1.1em;">
+  <strong>Bypasses CORS & WebKit codec issues in Tauri and Electron audio apps with ease.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/desktop-audio-proxy">
+    <img src="https://img.shields.io/npm/v/desktop-audio-proxy?style=flat-square&color=blue&label=npm" alt="npm version"/>
+  </a>
+  <a href="https://github.com/Bandonker/desktop-audio-proxy/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"/>
+  </a>
+    <a href="https://ko-fi.com/bandonker">
+    <img src="https://img.shields.io/badge/Ko--fi-Bandonker-29ABE0?style=flat-square&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"/>
+  </a>
+  <a href="https://www.buymeacoffee.com/Bandonker">
+    <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Bandonker-yellow?style=flat-square&logo=buymeacoffee&logoColor=black" alt="Coffee Me"/>
+  </a>
+  <a href="https://patreon.com/Bandonker">
+    <img src="https://img.shields.io/badge/Patreon-Bandonker-F96854?style=flat-square&logo=patreon&logoColor=white" alt="Support on Patreon"/>
+  </a>
+
+</p>
+
 
 ## Features
 
@@ -217,11 +242,10 @@ if (process.env.NODE_ENV === 'development') {
 
 ## License
 
-MIT © Bandonker
-
 <div align="center">
-  <sub>Made with ❤️ by Bandonker</sub>
+  <sub>MIT · Bandonker</sub>
 </div>
+
 
 ## Related Projects
 
@@ -233,3 +257,7 @@ MIT © Bandonker
 - [Report bugs](https://github.com/Bandonker/desktop-audio-proxy/issues)
 - [Request features](https://github.com/Bandonker/desktop-audio-proxy/discussions)
 - [Read the docs](https://github.com/Bandonker/desktop-audio-proxy/wiki)
+
+<div align="center">
+  <sub>Made with ❤️ by Bandonker</sub>
+</div>
