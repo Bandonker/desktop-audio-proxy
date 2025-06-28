@@ -1,0 +1,91 @@
+{
+  "name": "desktop-audio-proxy",
+  "version": "1.0.0",
+  "description": "A comprehensive audio streaming solution for Tauri and Electron apps that bypasses CORS and WebKit codec issues",
+  "main": "dist/index.cjs",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./browser": {
+      "import": "./dist/browser.esm.js",
+      "require": "./dist/browser.cjs",
+      "types": "./dist/browser.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.esm.js",
+      "require": "./dist/server.cjs",
+      "types": "./dist/server.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "test": "npm run test:client && npm run test:integration",
+    "test:client": "node test/test-client.js",
+    "test:integration": "node test/integration-test.js",
+    "test:all": "npm run build && npm test",
+    "lint": "echo \"Linting not configured\"",
+    "prepublishOnly": "npm run build",
+    "proxy:start": "node examples/standalone-server.js",
+    "example": "npm run build && npm run proxy:start"
+  },
+  "keywords": [
+    "tauri",
+    "electron",
+    "audio",
+    "proxy",
+    "cors",
+    "streaming",
+    "webkit",
+    "media",
+    "bandonker",
+    "desktop-audio",
+    "audio-proxy",
+    "cors-bypass"
+  ],
+  "author": {
+    "name": "Bandonker",
+    "url": "https://github.com/bandonker"
+  },
+  "contributors": ["Bandonker"],
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/bandonker"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bandonker/desktop-audio-proxy"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@types/cors": "^2.8.13",
+    "@types/express": "^4.17.17",
+    "@types/node": "^20.0.0",
+    "jest": "^29.0.0",
+    "rollup": "^3.0.0",
+    "tslib": "^2.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
