@@ -1,6 +1,6 @@
 {
   "name": "desktop-audio-proxy",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A comprehensive audio streaming solution for Tauri and Electron apps that bypasses CORS and WebKit codec issues",
   "main": "dist/index.cjs",
   "module": "dist/index.esm.js",
