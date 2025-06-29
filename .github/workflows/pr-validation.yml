@@ -1,0 +1,89 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Check for package.json changes
+      id: package-check
+      run: |
+        if git diff --name-only origin/main...HEAD | grep -q "package.json"; then
+          echo "package_changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "package_changed=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Validate version bump
+      if: steps.package-check.outputs.package_changed == 'true'
+      run: |
+        CURRENT_VERSION=$(node -p "require('./package.json').version")
+        git checkout origin/main -- package.json
+        MAIN_VERSION=$(node -p "require('./package.json').version")
+        git checkout HEAD -- package.json
+        
+        echo "Main branch version: $MAIN_VERSION"
+        echo "PR version: $CURRENT_VERSION"
+        
+        if [ "$CURRENT_VERSION" = "$MAIN_VERSION" ]; then
+          echo "❌ Version not bumped in package.json"
+          exit 1
+        else
+          echo "✅ Version properly bumped: $MAIN_VERSION → $CURRENT_VERSION"
+        fi
+        
+    - name: Build project
+      run: npm run build
+      
+    - name: Run tests
+      run: npm test
+      
+    - name: Check package size
+      run: |
+        npm pack
+        PACKAGE_SIZE=$(du -sh *.tgz | cut -f1)
+        echo "📦 Package size: $PACKAGE_SIZE"
+        
+    - name: Validate exports
+      run: |
+        echo "Validating package exports..."
+        node -e "
+          const pkg = require('./package.json');
+          const fs = require('fs');
+          
+          // Check main exports exist
+          console.log('Checking main exports...');
+          if (!fs.existsSync('./dist/index.cjs')) throw new Error('Missing main CJS build');
+          if (!fs.existsSync('./dist/index.esm.js')) throw new Error('Missing main ESM build');
+          if (!fs.existsSync('./dist/index.d.ts')) throw new Error('Missing main types');
+          
+          // Check browser exports exist
+          console.log('Checking browser exports...');
+          if (!fs.existsSync('./dist/browser.esm.js')) throw new Error('Missing browser ESM build');
+          if (!fs.existsSync('./dist/browser.cjs')) throw new Error('Missing browser CJS build');
+          if (!fs.existsSync('./dist/browser.d.ts')) throw new Error('Missing browser types');
+          
+          // Check server exports exist
+          console.log('Checking server exports...');
+          if (!fs.existsSync('./dist/server.esm.js')) throw new Error('Missing server ESM build');
+          if (!fs.existsSync('./dist/server.cjs')) throw new Error('Missing server CJS build');
+          if (!fs.existsSync('./dist/server.d.ts')) throw new Error('Missing server types');
+          
+          console.log('✅ All exports validated successfully');
+        "

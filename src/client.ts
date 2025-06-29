@@ -1,4 +1,3 @@
-
 import { AudioProxyOptions, StreamInfo, Environment } from './types';
 
 export class AudioProxyClient {
@@ -27,7 +26,12 @@ export class AudioProxyClient {
       return 'tauri';
     }
 
-    if ((window as any).electronAPI || (process && process.versions && process.versions.electron)) {
+    if (
+      (window as any).electronAPI ||
+      (typeof process !== 'undefined' &&
+        process.versions &&
+        process.versions.electron)
+    ) {
       return 'electron';
     }
 
@@ -46,7 +50,7 @@ export class AudioProxyClient {
       const response = await fetch(`${this.options.proxyUrl}/health`, {
         signal: controller.signal,
         method: 'GET',
-        cache: 'no-cache'
+        cache: 'no-cache',
       });
 
       clearTimeout(timeoutId);
@@ -58,7 +62,10 @@ export class AudioProxyClient {
       }
       return false;
     } catch (error: any) {
-      console.warn('[AudioProxyClient] Proxy server unavailable:', error.message);
+      console.warn(
+        '[AudioProxyClient] Proxy server unavailable:',
+        error.message
+      );
       return false;
     }
   }
@@ -74,18 +81,18 @@ export class AudioProxyClient {
         status: 200,
         headers: {},
         canPlay: true,
-        requiresProxy: false
+        requiresProxy: false,
       };
     }
 
     // Check if proxy is available
     const proxyAvailable = await this.isProxyAvailable();
-    
+
     if (proxyAvailable) {
       try {
         const infoUrl = `${this.options.proxyUrl}/info?url=${encodeURIComponent(url)}`;
         const response = await fetch(infoUrl);
-        
+
         if (response.ok) {
           const data = await response.json();
           const streamInfo: StreamInfo = {
@@ -97,13 +104,16 @@ export class AudioProxyClient {
             contentType: data.contentType,
             contentLength: data.contentLength,
             acceptRanges: data.acceptRanges,
-            lastModified: data.lastModified
+            lastModified: data.lastModified,
           };
           console.log('[AudioProxyClient] Stream info:', streamInfo);
           return streamInfo;
         }
       } catch (error) {
-        console.warn('[AudioProxyClient] Failed to get stream info via proxy:', error);
+        console.warn(
+          '[AudioProxyClient] Failed to get stream info via proxy:',
+          error
+        );
       }
     }
 
@@ -113,7 +123,7 @@ export class AudioProxyClient {
       status: 0,
       headers: {},
       canPlay: false,
-      requiresProxy: true
+      requiresProxy: true,
     };
     console.log('[AudioProxyClient] Stream info:', streamInfo);
     return streamInfo;
@@ -130,28 +140,37 @@ export class AudioProxyClient {
 
     // Check stream info
     const streamInfo = await this.canPlayUrl(url);
-    
+
     if (streamInfo.requiresProxy) {
-      console.log('[AudioProxyClient] Proxy required, checking availability...');
-      
+      console.log(
+        '[AudioProxyClient] Proxy required, checking availability...'
+      );
+
       // Try proxy with retries
       for (let attempt = 1; attempt <= this.options.retryAttempts; attempt++) {
         const proxyAvailable = await this.isProxyAvailable();
-        
+
         if (proxyAvailable) {
-          console.log('[AudioProxyClient] Generated proxy URL:', `${this.options.proxyUrl}/proxy?url=${encodeURIComponent(url)}`);
+          console.log(
+            '[AudioProxyClient] Generated proxy URL:',
+            `${this.options.proxyUrl}/proxy?url=${encodeURIComponent(url)}`
+          );
           return `${this.options.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
         }
-        
+
         if (attempt < this.options.retryAttempts) {
-          console.log(`[AudioProxyClient] Proxy not available on attempt ${attempt}`);
+          console.log(
+            `[AudioProxyClient] Proxy not available on attempt ${attempt}`
+          );
           await this.delay(this.options.retryDelay);
         }
       }
-      
+
       // Proxy failed, fallback if enabled
       if (this.options.fallbackToOriginal) {
-        console.log('[AudioProxyClient] Falling back to original URL (may have CORS issues)');
+        console.log(
+          '[AudioProxyClient] Falling back to original URL (may have CORS issues)'
+        );
         return url;
       } else {
         throw new Error('Proxy server unavailable and fallback disabled');
@@ -162,11 +181,13 @@ export class AudioProxyClient {
   }
 
   private isLocalFile(url: string): boolean {
-    return url.startsWith('/') || 
-           url.startsWith('./') || 
-           url.startsWith('../') ||
-           url.startsWith('file://') ||
-           !!url.match(/^[a-zA-Z]:\\/); // Windows path
+    return (
+      url.startsWith('/') ||
+      url.startsWith('./') ||
+      url.startsWith('../') ||
+      url.startsWith('file://') ||
+      !!url.match(/^[a-zA-Z]:\\/)
+    ); // Windows path
   }
 
   private handleLocalFile(url: string): string {
@@ -176,7 +197,10 @@ export class AudioProxyClient {
         const { convertFileSrc } = (window as any).__TAURI__.tauri;
         return convertFileSrc(url);
       } catch (error) {
-        console.warn('[AudioProxyClient] Failed to convert file source:', error);
+        console.warn(
+          '[AudioProxyClient] Failed to convert file source:',
+          error
+        );
       }
     }
 
@@ -189,6 +213,8 @@ export class AudioProxyClient {
   }
 }
 
-export function createAudioClient(options?: AudioProxyOptions): AudioProxyClient {
+export function createAudioClient(
+  options?: AudioProxyOptions
+): AudioProxyClient {
   return new AudioProxyClient(options);
 }

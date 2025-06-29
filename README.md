@@ -4,18 +4,25 @@
 
 <h1 align="center">DAP - Desktop Audio Proxy</h1>
 
-<hr style="width:60%; margin: 1rem auto; border-top: 1px solid #444;">
 
 <p align="center" style="font-size:1.1em;">
   <strong>Bypasses CORS & WebKit codec issues in Tauri and Electron audio apps with ease.</strong>
 </p>
 
 <p align="center">
+  <a href="https://github.com/Bandonker/desktop-audio-proxy/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/Bandonker/desktop-audio-proxy/ci.yml?branch=main&style=flat-square&label=build" alt="Build Status"/>
+  </a>
   <a href="https://www.npmjs.com/package/desktop-audio-proxy">
     <img src="https://img.shields.io/npm/v/desktop-audio-proxy?style=flat-square&color=blue&label=npm" alt="npm version"/>
   </a>
   <a href="https://github.com/Bandonker/desktop-audio-proxy/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"/>
+  </a>
+  <img src="https://img.shields.io/npm/dt/desktop-audio-proxy?style=flat-square&color=orange&label=downloads" alt="Total Downloads"/>
+  <img src="https://img.shields.io/github/stars/Bandonker/desktop-audio-proxy?style=flat-square&color=yellow&label=stars" alt="GitHub Stars"/>
+  <a href="https://codecov.io/gh/Bandonker/desktop-audio-proxy">
+    <img src="https://img.shields.io/codecov/c/github/Bandonker/desktop-audio-proxy?style=flat-square&label=coverage" alt="Coverage"/>
   </a>
     <a href="https://ko-fi.com/bandonker">
     <img src="https://img.shields.io/badge/Ko--fi-Bandonker-29ABE0?style=flat-square&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"/>
@@ -241,6 +248,8 @@ if (process.env.NODE_ENV === 'development') {
 ```
 
 ## License
+
+MIT License - see [LICENSE](LICENSE) for details.
 
 <div align="center">
   <sub>MIT · Bandonker</sub>
