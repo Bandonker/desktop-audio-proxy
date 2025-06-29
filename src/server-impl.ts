@@ -1,4 +1,3 @@
-
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import axios, { AxiosResponse } from 'axios';
@@ -7,16 +6,19 @@ import { createServer } from 'net';
 import { ProxyConfig } from './types';
 
 // Utility function to check if a port is available
-async function isPortAvailable(port: number, host: string = 'localhost'): Promise<boolean> {
-  return new Promise((resolve) => {
+async function isPortAvailable(
+  port: number,
+  host: string = 'localhost'
+): Promise<boolean> {
+  return new Promise(resolve => {
     const server = createServer();
-    
+
     server.listen(port, host, () => {
       server.close(() => {
         resolve(true);
       });
     });
-    
+
     server.on('error', () => {
       resolve(false);
     });
@@ -24,7 +26,11 @@ async function isPortAvailable(port: number, host: string = 'localhost'): Promis
 }
 
 // Find the next available port starting from the given port
-async function findAvailablePort(startPort: number, host: string = 'localhost', maxAttempts: number = 10): Promise<number> {
+async function findAvailablePort(
+  startPort: number,
+  host: string = 'localhost',
+  maxAttempts: number = 10
+): Promise<number> {
   for (let i = 0; i < maxAttempts; i++) {
     const port = startPort + i;
     const available = await isPortAvailable(port, host);
@@ -32,7 +38,9 @@ async function findAvailablePort(startPort: number, host: string = 'localhost', 
       return port;
     }
   }
-  throw new Error(`No available port found in range ${startPort}-${startPort + maxAttempts - 1}`);
+  throw new Error(
+    `No available port found in range ${startPort}-${startPort + maxAttempts - 1}`
+  );
 }
 
 export class AudioProxyServer {
@@ -62,13 +70,15 @@ export class AudioProxyServer {
 
   private setupMiddleware(): void {
     // CORS middleware
-    this.app.use(cors({
-      origin: this.config.corsOrigins,
-      credentials: true,
-      exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges'],
-      methods: ['GET', 'OPTIONS', 'HEAD'],
-      allowedHeaders: ['Content-Type', 'Range', 'Accept-Encoding']
-    }));
+    this.app.use(
+      cors({
+        origin: this.config.corsOrigins,
+        credentials: true,
+        exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges'],
+        methods: ['GET', 'OPTIONS', 'HEAD'],
+        allowedHeaders: ['Content-Type', 'Range', 'Accept-Encoding'],
+      })
+    );
 
     // Logging middleware
     if (this.config.enableLogging) {
@@ -85,9 +95,10 @@ export class AudioProxyServer {
       res.set({
         'Access-Control-Allow-Origin': this.config.corsOrigins,
         'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Range, Accept-Encoding, User-Agent',
+        'Access-Control-Allow-Headers':
+          'Content-Type, Range, Accept-Encoding, User-Agent',
         'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Max-Age': '86400' // 24 hours
+        'Access-Control-Max-Age': '86400', // 24 hours
       });
       res.status(204).end();
     });
@@ -102,8 +113,8 @@ export class AudioProxyServer {
           port: this.actualPort || this.config.port,
           configuredPort: this.config.port,
           enableTranscoding: this.config.enableTranscoding,
-          cacheEnabled: this.config.cacheEnabled
-        }
+          cacheEnabled: this.config.cacheEnabled,
+        },
       });
     });
 
@@ -121,11 +132,11 @@ export class AudioProxyServer {
           url: url,
           headers: {
             'User-Agent': this.config.userAgent,
-            'Accept': 'audio/*,*/*;q=0.1'
+            Accept: 'audio/*,*/*;q=0.1',
           },
           timeout: this.config.timeout,
           maxRedirects: this.config.maxRedirects,
-          validateStatus: (status) => status < 400
+          validateStatus: status => status < 400,
         });
 
         res.json({
@@ -135,21 +146,21 @@ export class AudioProxyServer {
           contentType: response.headers['content-type'],
           contentLength: response.headers['content-length'],
           acceptRanges: response.headers['accept-ranges'],
-          lastModified: response.headers['last-modified']
+          lastModified: response.headers['last-modified'],
         });
       } catch (error: any) {
         console.error('[AudioProxy] Info error:', error);
-        
+
         if (error.response) {
-          res.status(error.response.status).json({ 
+          res.status(error.response.status).json({
             error: `Upstream error: ${error.response.status} ${error.response.statusText}`,
-            url: url
+            url: url,
           });
         } else {
-          res.status(500).json({ 
+          res.status(500).json({
             error: 'Failed to get stream info',
             message: error.message || 'Unknown error',
-            url: url
+            url: url,
           });
         }
       }
@@ -167,18 +178,20 @@ export class AudioProxyServer {
         res.set({
           'Access-Control-Allow-Origin': this.config.corsOrigins,
           'Access-Control-Allow-Credentials': 'true',
-          'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges',
+          'Access-Control-Expose-Headers':
+            'Content-Length, Content-Range, Accept-Ranges',
           'Access-Control-Allow-Methods': 'GET, OPTIONS, HEAD',
-          'Access-Control-Allow-Headers': 'Content-Type, Range, Accept-Encoding'
+          'Access-Control-Allow-Headers':
+            'Content-Type, Range, Accept-Encoding',
         });
 
         // Prepare request headers
         const requestHeaders: any = {
           'User-Agent': this.config.userAgent,
-          'Accept': req.headers.accept || 'audio/*,*/*;q=0.1',
+          Accept: req.headers.accept || 'audio/*,*/*;q=0.1',
           'Accept-Language': req.headers['accept-language'] || 'en-US,en;q=0.9',
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
+          Pragma: 'no-cache',
         };
 
         // Handle range requests for seeking support
@@ -199,7 +212,7 @@ export class AudioProxyServer {
           responseType: 'stream',
           timeout: this.config.timeout,
           maxRedirects: this.config.maxRedirects,
-          validateStatus: (status) => status < 400, // Accept redirects and success codes
+          validateStatus: status => status < 400, // Accept redirects and success codes
         });
 
         // Set response status
@@ -208,13 +221,13 @@ export class AudioProxyServer {
         // Copy relevant headers from the original response
         const headersToProxy = [
           'content-type',
-          'content-length', 
+          'content-length',
           'content-range',
           'accept-ranges',
           'cache-control',
           'expires',
           'last-modified',
-          'etag'
+          'etag',
         ];
 
         headersToProxy.forEach(header => {
@@ -226,13 +239,13 @@ export class AudioProxyServer {
 
         // Handle errors during streaming
         const stream = response.data as Readable;
-        
-        stream.on('error', (error) => {
+
+        stream.on('error', error => {
           console.error('[AudioProxy] Stream error:', error);
           if (!res.headersSent) {
-            res.status(500).json({ 
+            res.status(500).json({
               error: 'Stream error',
-              message: error.message 
+              message: error.message,
             });
           } else {
             res.end();
@@ -246,7 +259,7 @@ export class AudioProxyServer {
           }
         });
 
-        res.on('error', (error) => {
+        res.on('error', error => {
           console.error('[AudioProxy] Response error:', error);
           if (stream && !stream.destroyed) {
             stream.destroy();
@@ -255,44 +268,43 @@ export class AudioProxyServer {
 
         // Pipe the stream to response
         stream.pipe(res);
-
       } catch (error: any) {
         console.error('[AudioProxy] Proxy error:', error);
-        
+
         if (!res.headersSent) {
           if (error.response) {
             // HTTP error from upstream
-            res.status(error.response.status).json({ 
+            res.status(error.response.status).json({
               error: `Upstream error: ${error.response.status} ${error.response.statusText}`,
-              url: url
+              url: url,
             });
           } else if (error.code === 'ENOTFOUND') {
             // DNS resolution failed
-            res.status(404).json({ 
+            res.status(404).json({
               error: 'Audio source not found',
               message: 'Unable to resolve hostname',
-              url: url
+              url: url,
             });
           } else if (error.code === 'ECONNREFUSED') {
             // Connection refused
-            res.status(503).json({ 
+            res.status(503).json({
               error: 'Audio source unavailable',
               message: 'Connection refused',
-              url: url
+              url: url,
             });
           } else if (error.code === 'ETIMEDOUT') {
             // Request timeout
-            res.status(408).json({ 
+            res.status(408).json({
               error: 'Request timeout',
               message: 'Audio source did not respond in time',
-              url: url
+              url: url,
             });
           } else {
             // Generic error
-            res.status(500).json({ 
+            res.status(500).json({
               error: 'Proxy request failed',
               message: error.message || 'Unknown error',
-              url: url
+              url: url,
             });
           }
         }
@@ -303,15 +315,24 @@ export class AudioProxyServer {
   public async start(): Promise<void> {
     try {
       // Find an available port starting from the configured port
-      this.actualPort = await findAvailablePort(this.config.port, this.config.host);
-      
+      this.actualPort = await findAvailablePort(
+        this.config.port,
+        this.config.host
+      );
+
       return new Promise((resolve, reject) => {
         this.server = this.app.listen(this.actualPort, this.config.host, () => {
           if (this.actualPort !== this.config.port) {
-            console.log(`⚠️  Port ${this.config.port} was occupied, using port ${this.actualPort} instead`);
+            console.log(
+              `⚠️  Port ${this.config.port} was occupied, using port ${this.actualPort} instead`
+            );
           }
-          console.log(`🎵 Desktop Audio Proxy running on http://${this.config.host}:${this.actualPort}`);
-          console.log(`📡 Use http://${this.config.host}:${this.actualPort}/proxy?url=YOUR_AUDIO_URL`);
+          console.log(
+            `🎵 Desktop Audio Proxy running on http://${this.config.host}:${this.actualPort}`
+          );
+          console.log(
+            `📡 Use http://${this.config.host}:${this.actualPort}/proxy?url=YOUR_AUDIO_URL`
+          );
           resolve();
         });
 
@@ -320,12 +341,14 @@ export class AudioProxyServer {
         });
       });
     } catch (error: any) {
-      throw new Error(`Failed to start proxy server: ${error?.message || 'Unknown error'}`);
+      throw new Error(
+        `Failed to start proxy server: ${error?.message || 'Unknown error'}`
+      );
     }
   }
 
   public async stop(): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       if (this.server) {
         this.server.close(() => {
           console.log('🛑 Desktop Audio Proxy stopped');
@@ -351,12 +374,10 @@ export function createProxyServer(config?: ProxyConfig): AudioProxyServer {
   return new AudioProxyServer(config);
 }
 
-export async function startProxyServer(config?: ProxyConfig): Promise<AudioProxyServer> {
+export async function startProxyServer(
+  config?: ProxyConfig
+): Promise<AudioProxyServer> {
   const server = createProxyServer(config);
-  try {
-    await server.start();
-    return server;
-  } catch (error) {
-    throw error;
-  }
+  await server.start();
+  return server;
 }

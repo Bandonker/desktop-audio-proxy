@@ -1,0 +1,88 @@
+name: Question/Support
+description: Ask a question about using desktop-audio-proxy
+title: "[QUESTION]: "
+labels: ["question", "support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question about how to use desktop-audio-proxy? We're here to help!
+        
+        Before asking, please check:
+        - [Documentation](https://github.com/bandonker/desktop-audio-proxy#readme)
+        - [Existing issues](https://github.com/bandonker/desktop-audio-proxy/issues)
+        - [Examples](https://github.com/bandonker/desktop-audio-proxy/tree/main/examples)
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know?
+      placeholder: How do I...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Question Category
+      description: What area is your question about?
+      options:
+        - Setup/Installation
+        - Configuration
+        - Tauri Integration
+        - Electron Integration
+        - Web Browser Usage
+        - Server/Proxy Setup
+        - Troubleshooting
+        - Performance
+        - Security
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      description: What environment are you working with?
+      options:
+        - Tauri
+        - Electron
+        - Web Browser
+        - Node.js (server-side)
+        - Multiple environments
+        - Not sure
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Provide any additional context about your question
+      placeholder: |
+        I'm trying to build...
+        My setup includes...
+        I've already tried...
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Relevant Code
+      description: If applicable, include any relevant code
+      render: javascript
+      placeholder: |
+        // Your code here
+        const client = new AudioProxyClient(...);
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have read the documentation
+          required: true
+        - label: I have searched existing issues
+          required: true
+        - label: This is not a bug report (use the bug template instead)
+          required: true

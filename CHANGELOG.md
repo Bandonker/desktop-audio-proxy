@@ -5,6 +5,39 @@ All notable changes to Desktop Audio Proxy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-06-29
+
+### Added
+- Comprehensive Jest test suite with TypeScript support
+- ESLint and Prettier configuration for code quality
+- GitHub Actions CI/CD pipeline with automated testing
+- GitHub issue templates (bug report, feature request, question)
+- GitHub pull request template for structured contributions
+- Security policy with vulnerability reporting guidelines
+- Electron-specific integration example with preload script patterns
+- Code of conduct for community guidelines
+
+### Changed
+- Updated npm scripts to support Jest testing alongside legacy tests
+
+### Developer Experience
+- Added `npm run test:watch` for continuous testing during development
+- Added `npm run test:coverage` for coverage reports
+- Added `npm run lint:fix` for automatic code formatting
+- Enhanced TypeScript configuration for better development experience
+
+## [1.0.2] - 2025-06-29
+
+### Fixed
+- Minor bug fixes and stability improvements
+- Updated dependencies to latest stable versions
+
+## [1.0.1] - 2025-06-28
+
+### Fixed
+- Package.json export configuration
+- TypeScript type definitions paths
+
 ## [1.0.0] - 2025-06-27
 
 ### Added

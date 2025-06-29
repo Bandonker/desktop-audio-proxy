@@ -1,4 +1,3 @@
-
 export interface ProxyConfig {
   port?: number;
   host?: string;

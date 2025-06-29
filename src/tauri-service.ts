@@ -1,4 +1,3 @@
-
 import { AudioProxyClient } from './client';
 import { AudioServiceOptions } from './types';
 
@@ -28,7 +27,10 @@ export class TauriAudioService {
   }
 
   // Tauri-specific methods can be added here
-  public async checkSystemCodecs(): Promise<{ supportedFormats: string[], missingCodecs: string[] }> {
+  public async checkSystemCodecs(): Promise<{
+    supportedFormats: string[];
+    missingCodecs: string[];
+  }> {
     // This would integrate with Tauri's backend to check installed codecs
     // For now, return a mock implementation
     const audio = new Audio();
@@ -38,7 +40,7 @@ export class TauriAudioService {
       { name: 'WAV', mime: 'audio/wav' },
       { name: 'AAC', mime: 'audio/aac' },
       { name: 'FLAC', mime: 'audio/flac' },
-      { name: 'WEBM', mime: 'audio/webm' }
+      { name: 'WEBM', mime: 'audio/webm' },
     ];
 
     const supportedFormats: string[] = [];
