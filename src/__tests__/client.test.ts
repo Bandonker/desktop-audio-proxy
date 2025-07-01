@@ -7,6 +7,9 @@ describe('AudioProxyClient', () => {
   let client: AudioProxyClient;
 
   beforeEach(() => {
+    // Clear all mock calls between tests
+    jest.clearAllMocks();
+    
     client = new AudioProxyClient({
       proxyUrl: 'http://localhost:3001',
       autoDetect: true,
@@ -192,28 +195,35 @@ describe('AudioProxyClient', () => {
         contentLength: '1024000',
       };
 
-      // Mock health check response for isProxyAvailable
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ status: 'healthy' }),
-      } as Response);
-
-      // Mock stream info request response
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            url: mockStreamInfo.url,
-            status: mockStreamInfo.status,
-            headers: mockStreamInfo.headers,
-            contentType: mockStreamInfo.contentType,
-            contentLength: mockStreamInfo.contentLength,
-            acceptRanges: 'bytes',
-            lastModified: 'Wed, 01 Jan 2020 00:00:00 GMT',
-          }),
-      } as Response);
+      // Mock implementation for this specific test
+      let callCount = 0;
+      mockFetch.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          // First call: health check
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ status: 'healthy' }),
+          } as Response);
+        } else {
+          // Second call: stream info
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                url: mockStreamInfo.url,
+                status: mockStreamInfo.status,
+                headers: mockStreamInfo.headers,
+                contentType: mockStreamInfo.contentType,
+                contentLength: mockStreamInfo.contentLength,
+                acceptRanges: 'bytes',
+                lastModified: 'Wed, 01 Jan 2020 00:00:00 GMT',
+              }),
+          } as Response);
+        }
+      });
 
       const result = await client.canPlayUrl('https://example.com/audio.mp3');
 
@@ -240,31 +250,40 @@ describe('AudioProxyClient', () => {
   describe('URL Validation', () => {
     beforeEach(() => {
       (global as any).window = {};
+      // Ensure fresh mock state for this test group
+      jest.clearAllMocks();
     });
 
     it('should handle URL validation through canPlayUrl', async () => {
-      // Mock successful health check
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ status: 'healthy' }),
-      } as Response);
-
-      // Mock stream info with valid response
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            url: 'https://example.com/audio.mp3',
+      // Mock implementation for this specific test
+      let callCount = 0;
+      mockFetch.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          // First call: health check
+          return Promise.resolve({
+            ok: true,
             status: 200,
-            headers: {},
-            contentType: 'audio/mpeg',
-            contentLength: '1024000',
-            acceptRanges: 'bytes',
-            lastModified: 'Wed, 01 Jan 2020 00:00:00 GMT',
-          }),
-      } as Response);
+            json: () => Promise.resolve({ status: 'healthy' }),
+          } as Response);
+        } else {
+          // Second call: stream info
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                url: 'https://example.com/audio.mp3',
+                status: 200,
+                headers: {},
+                contentType: 'audio/mpeg',
+                contentLength: '1024000',
+                acceptRanges: 'bytes',
+                lastModified: 'Wed, 01 Jan 2020 00:00:00 GMT',
+              }),
+          } as Response);
+        }
+      });
 
       const streamInfo = await client.canPlayUrl(
         'https://example.com/audio.mp3'
