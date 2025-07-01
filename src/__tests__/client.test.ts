@@ -189,26 +189,40 @@ describe('AudioProxyClient', () => {
         canPlay: true,
         requiresProxy: true,
         contentType: 'audio/mpeg',
-        contentLength: 1024000,
+        contentLength: '1024000',
       };
 
-      // Mock health check
+      // Mock health check response for isProxyAvailable
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: () => Promise.resolve({ status: 'healthy' }),
       } as Response);
 
-      // Mock stream info request
+      // Mock stream info request response
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve(mockStreamInfo),
+        json: () =>
+          Promise.resolve({
+            url: mockStreamInfo.url,
+            status: mockStreamInfo.status,
+            headers: mockStreamInfo.headers,
+            contentType: mockStreamInfo.contentType,
+            contentLength: mockStreamInfo.contentLength,
+            acceptRanges: 'bytes',
+            lastModified: 'Wed, 01 Jan 2020 00:00:00 GMT',
+          }),
       } as Response);
 
       const result = await client.canPlayUrl('https://example.com/audio.mp3');
 
-      expect(result).toEqual(mockStreamInfo);
+      expect(result.url).toBe(mockStreamInfo.url);
+      expect(result.status).toBe(mockStreamInfo.status);
+      expect(result.canPlay).toBe(true);
+      expect(result.requiresProxy).toBe(true);
+      expect(result.contentType).toBe('audio/mpeg');
+      expect(result.contentLength).toBe('1024000');
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/info?url=')
       );
@@ -245,9 +259,10 @@ describe('AudioProxyClient', () => {
             url: 'https://example.com/audio.mp3',
             status: 200,
             headers: {},
-            canPlay: true,
-            requiresProxy: true,
             contentType: 'audio/mpeg',
+            contentLength: '1024000',
+            acceptRanges: 'bytes',
+            lastModified: 'Wed, 01 Jan 2020 00:00:00 GMT',
           }),
       } as Response);
 
@@ -255,6 +270,8 @@ describe('AudioProxyClient', () => {
         'https://example.com/audio.mp3'
       );
       expect(streamInfo.canPlay).toBe(true);
+      expect(streamInfo.requiresProxy).toBe(true);
+      expect(streamInfo.status).toBe(200);
     });
 
     it('should return false for invalid URLs', async () => {

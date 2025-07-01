@@ -1,6 +1,6 @@
 {
   "name": "desktop-audio-proxy",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "A comprehensive audio streaming solution for Tauri and Electron apps that bypasses CORS and WebKit codec issues",
   "main": "dist/index.cjs",
   "module": "dist/index.esm.js",
@@ -29,15 +29,16 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:legacy": "npm run test:client && npm run test:integration",
-    "test:client": "node test/test-client.js",
-    "test:integration": "node test/integration-test.js",
     "test:all": "npm run build && npm test",
     "lint": "eslint src --ext .ts && prettier --check src",
     "lint:fix": "eslint src --ext .ts --fix && prettier --write src",
     "prepublishOnly": "npm run build",
     "proxy:start": "node examples/standalone-server.js",
-    "example": "npm run build && npm run proxy:start"
+    "example": "npm run build && npm run proxy:start",
+    "demo": "node demo/start-demo.js",
+    "demo:cli": "node demo/cli-demo.js",
+    "demo:serve": "cd demo && python -m http.server 8080",
+    "demo:simple": "npm run build && npm run proxy:start"
   },
   "keywords": [
     "tauri",
@@ -69,10 +70,19 @@
     "type": "git",
     "url": "https://github.com/bandonker/desktop-audio-proxy"
   },
+  "homepage": "https://github.com/bandonker/desktop-audio-proxy#readme",
+  "bugs": {
+    "url": "https://github.com/bandonker/desktop-audio-proxy/issues"
+  },
   "files": [
     "dist",
     "src",
-    "README.md"
+    "demo",
+    "examples",
+    "assets",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "dependencies": {
     "axios": "^1.6.0",
@@ -95,6 +105,7 @@
     "eslint-plugin-prettier": "^5.5.1",
     "jest": "^29.0.0",
     "prettier": "^3.6.2",
+    "puppeteer": "^24.11.1",
     "rollup": "^3.0.0",
     "ts-jest": "^29.4.0",
     "tslib": "^2.0.0",

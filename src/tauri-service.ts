@@ -26,35 +26,137 @@ export class TauriAudioService {
     return await this.audioClient.isProxyAvailable();
   }
 
-  // Tauri-specific methods can be added here
   public async checkSystemCodecs(): Promise<{
     supportedFormats: string[];
     missingCodecs: string[];
+    capabilities: Record<string, string>;
   }> {
-    // This would integrate with Tauri's backend to check installed codecs
-    // For now, return a mock implementation
     const audio = new Audio();
     const formats = [
-      { name: 'MP3', mime: 'audio/mpeg' },
-      { name: 'OGG', mime: 'audio/ogg' },
-      { name: 'WAV', mime: 'audio/wav' },
-      { name: 'AAC', mime: 'audio/aac' },
-      { name: 'FLAC', mime: 'audio/flac' },
-      { name: 'WEBM', mime: 'audio/webm' },
+      { name: 'MP3', mime: 'audio/mpeg', codecs: ['mp3'] },
+      { name: 'OGG', mime: 'audio/ogg', codecs: ['vorbis', 'opus'] },
+      { name: 'WAV', mime: 'audio/wav', codecs: ['pcm'] },
+      { name: 'AAC', mime: 'audio/aac', codecs: ['mp4a.40.2'] },
+      { name: 'FLAC', mime: 'audio/flac', codecs: ['flac'] },
+      { name: 'WEBM', mime: 'audio/webm', codecs: ['vorbis', 'opus'] },
+      { name: 'M4A', mime: 'audio/mp4', codecs: ['mp4a.40.2'] },
     ];
 
     const supportedFormats: string[] = [];
     const missingCodecs: string[] = [];
+    const capabilities: Record<string, string> = {};
 
-    formats.forEach(format => {
-      const canPlay = audio.canPlayType(format.mime);
-      if (canPlay === 'probably' || canPlay === 'maybe') {
+    for (const format of formats) {
+      let bestSupport = '';
+      let isSupported = false;
+
+      // Test basic MIME type
+      const basicSupport = audio.canPlayType(format.mime);
+      capabilities[format.name + '_basic'] = basicSupport;
+
+      if (basicSupport === 'probably' || basicSupport === 'maybe') {
+        bestSupport = basicSupport;
+        isSupported = true;
+      }
+
+      // Test with codecs
+      for (const codec of format.codecs) {
+        const codecSupport = audio.canPlayType(
+          `${format.mime}; codecs="${codec}"`
+        );
+        capabilities[format.name + '_' + codec] = codecSupport;
+
+        if (codecSupport === 'probably') {
+          bestSupport = 'probably';
+          isSupported = true;
+        } else if (codecSupport === 'maybe' && bestSupport !== 'probably') {
+          bestSupport = 'maybe';
+          isSupported = true;
+        }
+      }
+
+      capabilities[format.name] = bestSupport;
+
+      if (isSupported) {
         supportedFormats.push(format.name);
       } else {
         missingCodecs.push(format.name);
       }
-    });
+    }
 
-    return { supportedFormats, missingCodecs };
+    // Check for additional Tauri-specific audio capabilities if available
+    if (this.getEnvironment() === 'tauri' && (window as any).__TAURI__) {
+      try {
+        const { invoke } = (window as any).__TAURI__.tauri;
+
+        // Try to get system audio info from Tauri backend
+        const systemAudioInfo = await invoke('get_system_audio_info').catch(
+          () => null
+        );
+        if (systemAudioInfo) {
+          capabilities['tauri_system_info'] = JSON.stringify(systemAudioInfo);
+
+          // Enhanced format support based on system capabilities
+          if (systemAudioInfo.supportedFormats) {
+            systemAudioInfo.supportedFormats.forEach((format: string) => {
+              if (!supportedFormats.includes(format)) {
+                supportedFormats.push(format);
+                // Remove from missing codecs if it was there
+                const missingIndex = missingCodecs.indexOf(format);
+                if (missingIndex > -1) {
+                  missingCodecs.splice(missingIndex, 1);
+                }
+              }
+            });
+          }
+        }
+      } catch (error) {
+        console.warn(
+          '[TauriAudioService] Could not access Tauri backend for codec detection:',
+          error
+        );
+      }
+    }
+
+    return { supportedFormats, missingCodecs, capabilities };
+  }
+
+  // Tauri-specific method to get audio file metadata
+  public async getAudioMetadata(filePath: string): Promise<{
+    duration?: number;
+    bitrate?: number;
+    sampleRate?: number;
+    channels?: number;
+    format?: string;
+  } | null> {
+    if (this.getEnvironment() !== 'tauri' || !(window as any).__TAURI__) {
+      return null;
+    }
+
+    try {
+      const { invoke } = (window as any).__TAURI__.tauri;
+      return await invoke('get_audio_metadata', { path: filePath });
+    } catch (error) {
+      console.warn('[TauriAudioService] Failed to get audio metadata:', error);
+      return null;
+    }
+  }
+
+  // Tauri-specific method to enumerate audio devices
+  public async getAudioDevices(): Promise<{
+    inputDevices: Array<{ id: string; name: string }>;
+    outputDevices: Array<{ id: string; name: string }>;
+  } | null> {
+    if (this.getEnvironment() !== 'tauri' || !(window as any).__TAURI__) {
+      return null;
+    }
+
+    try {
+      const { invoke } = (window as any).__TAURI__.tauri;
+      return await invoke('get_audio_devices');
+    } catch (error) {
+      console.warn('[TauriAudioService] Failed to get audio devices:', error);
+      return null;
+    }
   }
 }

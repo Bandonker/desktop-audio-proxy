@@ -186,25 +186,39 @@ export class AudioProxyClient {
       url.startsWith('./') ||
       url.startsWith('../') ||
       url.startsWith('file://') ||
+      url.startsWith('blob:') ||
+      url.startsWith('data:') ||
       !!url.match(/^[a-zA-Z]:\\/)
     ); // Windows path
   }
 
   private handleLocalFile(url: string): string {
-    // In Tauri, use convertFileSrc
+    // Handle data: and blob: URLs directly - no conversion needed
+    if (url.startsWith('data:') || url.startsWith('blob:')) {
+      return url;
+    }
+
+    // In Tauri, use convertFileSrc for file:// URLs
     if (this.environment === 'tauri' && (window as any).__TAURI__) {
       try {
         const { convertFileSrc } = (window as any).__TAURI__.tauri;
-        return convertFileSrc(url);
+        if (
+          url.startsWith('file://') ||
+          url.startsWith('/') ||
+          url.match(/^[a-zA-Z]:\\/)
+        ) {
+          return convertFileSrc(url);
+        }
       } catch (error) {
         console.warn(
-          '[AudioProxyClient] Failed to convert file source:',
+          '[AudioProxyClient] Failed to convert file source with Tauri:',
           error
         );
+        // Fallback to original URL if conversion fails
       }
     }
 
-    // For other environments, return as-is
+    // For other environments or fallback, return as-is
     return url;
   }
 

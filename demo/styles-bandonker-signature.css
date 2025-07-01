@@ -1,0 +1,827 @@
+/* Desktop Audio Proxy Demo - Bandonker Signature UI */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Monochrome Palette */
+  --pure-black: #000000;
+  --dark-black: #0A0A0A;
+  --dark-gray-1: #111111;
+  --dark-gray-2: #1A1A1A;
+  --dark-gray-3: #252525;
+  --medium-gray: #404040;
+  --light-gray: #808080;
+  --bright-gray: #B0B0B0;
+  --off-white: #E0E0E0;
+  --pure-white: #FFFFFF;
+  
+  /* Functional Colors (still monochrome) */
+  --success: #FFFFFF;
+  --error: #FFFFFF;
+  --warning: #B0B0B0;
+  
+  /* Typography */
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font-sans: 'Space Grotesk', -apple-system, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-mono);
+  background: var(--pure-black);
+  color: var(--off-white);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-x: hidden;
+  position: relative;
+}
+
+
+/* Container */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes glitch {
+  0% {
+    text-shadow: 
+      0.05em 0 0 rgba(255, 255, 255, 0.75),
+      -0.05em -0.025em 0 rgba(255, 255, 255, 0.75),
+      0.025em 0.05em 0 rgba(255, 255, 255, 0.75);
+  }
+  15% {
+    text-shadow: 
+      0.05em 0 0 rgba(255, 255, 255, 0.75),
+      -0.05em -0.025em 0 rgba(255, 255, 255, 0.75),
+      0.025em 0.05em 0 rgba(255, 255, 255, 0.75);
+  }
+  16% {
+    text-shadow: 
+      -0.05em -0.025em 0 rgba(255, 255, 255, 0.75),
+      0.025em 0.025em 0 rgba(255, 255, 255, 0.75),
+      -0.05em -0.05em 0 rgba(255, 255, 255, 0.75);
+  }
+  49% {
+    text-shadow: 
+      -0.05em -0.025em 0 rgba(255, 255, 255, 0.75),
+      0.025em 0.025em 0 rgba(255, 255, 255, 0.75),
+      -0.05em -0.05em 0 rgba(255, 255, 255, 0.75);
+  }
+  50% {
+    text-shadow: 
+      0.025em 0.05em 0 rgba(255, 255, 255, 0.75),
+      0.05em 0 0 rgba(255, 255, 255, 0.75),
+      0 -0.05em 0 rgba(255, 255, 255, 0.75);
+  }
+  99% {
+    text-shadow: 
+      0.025em 0.05em 0 rgba(255, 255, 255, 0.75),
+      0.05em 0 0 rgba(255, 255, 255, 0.75),
+      0 -0.05em 0 rgba(255, 255, 255, 0.75);
+  }
+  100% {
+    text-shadow: 
+      -0.025em 0 0 rgba(255, 255, 255, 0.75),
+      -0.025em -0.025em 0 rgba(255, 255, 255, 0.75),
+      -0.025em -0.05em 0 rgba(255, 255, 255, 0.75);
+  }
+}
+
+header {
+  background: var(--dark-gray-1);
+  border: 1px solid var(--medium-gray);
+  border-radius: 4px;
+  padding: 3rem 2.5rem 2.5rem 2.5rem;
+  margin-bottom: 2rem;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
+}
+
+/* Terminal prompt decoration */
+header::before {
+  content: '$ npm install desktop-audio-proxy\A$ ./desktop-audio-proxy --init';
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-size: 0.75rem;
+  color: var(--light-gray);
+  font-family: var(--font-mono);
+  opacity: 0.5;
+  white-space: pre;
+}
+
+header::after {
+  content: '|';
+  position: absolute;
+  top: 32px;
+  left: 229px;
+  font-size: 0.75rem;
+  color: var(--pure-white);
+  animation: terminal-blink 1s step-end infinite;
+  line-height: 1;
+  font-weight: bold;
+}
+
+@keyframes terminal-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+.logo {
+  width: 64px;
+  height: 64px;
+  margin-right: 1rem;
+  margin-bottom: 0;
+  filter: invert(1);
+  opacity: 0.9;
+}
+
+header h1 {
+  font-size: 2.2rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  font-family: var(--font-mono);
+  animation: glitch 3s ease-in-out infinite;
+  display: inline-block;
+  position: relative;
+  color: var(--bright-gray);
+  text-transform: uppercase;
+}
+
+header h1::before {
+  content: "DESKTOP AUDIO PROXY";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.15);
+  text-stroke: 1px rgba(255, 255, 255, 0.15);
+  color: transparent;
+}
+
+.subtitle {
+  font-size: 1rem;
+  color: var(--bright-gray);
+  font-weight: 400;
+  margin-bottom: 1.5rem;
+  font-family: var(--font-mono);
+}
+
+/* Status Badge - Clean Terminal Style */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--dark-gray-2);
+  border: 1px solid var(--light-gray);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  position: relative;
+}
+
+.status-badge::before {
+  content: '[OK]';
+  color: var(--pure-white);
+  margin-right: 0.5rem;
+}
+
+/* Demo Section */
+.demo-section {
+  display: grid;
+  gap: 1.5rem;
+}
+
+/* Clean Card System */
+.signature-card {
+  background: var(--dark-gray-1);
+  border: 1px solid var(--dark-gray-3);
+  padding: 2rem;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.signature-card:hover {
+  border-color: var(--light-gray);
+}
+
+/* Section Headers */
+.signature-card h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--pure-white);
+  font-family: var(--font-sans);
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--dark-gray-3);
+}
+
+/* Status Grid */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.status-item {
+  background: var(--dark-black);
+  border: 1px solid var(--dark-gray-3);
+  padding: 1.25rem;
+  position: relative;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.status-item::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 3px;
+  height: 3px;
+  background: var(--light-gray);
+  opacity: 0.5;
+}
+
+.status-item:hover {
+  border-color: var(--light-gray);
+  background: var(--dark-gray-2);
+}
+
+.label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--light-gray);
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.value {
+  font-size: 1.125rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--light-gray);
+  font-family: var(--font-mono);
+}
+
+/* Capabilities Grid */
+.capabilities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.capability-card {
+  padding: 1.5rem;
+  border: 1px solid var(--dark-gray-3);
+  background: var(--dark-black);
+  position: relative;
+}
+
+.capability-card.success {
+  border-left: 3px solid var(--pure-white);
+}
+
+.capability-card.success::before {
+  content: '+';
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  color: var(--pure-white);
+  font-size: 1.5rem;
+  font-weight: 300;
+}
+
+.capability-card.danger {
+  border-left: 3px solid var(--light-gray);
+  border-style: solid solid solid dashed;
+}
+
+.capability-card.danger::before {
+  content: '-';
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  color: var(--light-gray);
+  font-size: 1.5rem;
+  font-weight: 300;
+}
+
+.capability-card h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  font-family: var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.capability-card ul li {
+  padding: 0.5rem 0;
+  font-size: 0.8rem;
+  color: var(--bright-gray);
+  border-bottom: 1px solid var(--dark-gray-2);
+  font-family: var(--font-mono);
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.capability-card ul li::before {
+  content: '>';
+  position: absolute;
+  left: 0;
+  color: var(--light-gray);
+}
+
+/* Input Section */
+.url-input-section {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+#audio-url {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: var(--pure-black);
+  border: 1px solid var(--dark-gray-3);
+  color: var(--pure-white);
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+  transition: all 0.2s ease;
+}
+
+#audio-url:focus {
+  outline: none;
+  border-color: var(--pure-white);
+  background: var(--dark-gray-1);
+}
+
+#audio-url::placeholder {
+  color: var(--light-gray);
+}
+
+/* Terminal Button */
+.btn {
+  padding: 0.75rem 1.5rem;
+  border: 1px solid var(--pure-white);
+  background: var(--dark-gray-1);
+  color: var(--pure-white);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  font-family: var(--font-mono);
+}
+
+.btn:hover {
+  background: var(--pure-white);
+  color: var(--pure-black);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+/* Preset Buttons */
+.preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.preset-buttons button {
+  padding: 0.5rem 1rem;
+  background: var(--dark-black);
+  border: 1px solid var(--dark-gray-3);
+  color: var(--bright-gray);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.preset-buttons button:hover {
+  border-color: var(--pure-white);
+  color: var(--pure-white);
+  background: var(--dark-gray-2);
+}
+
+/* Test Results */
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 1.5rem;
+}
+
+.test-result {
+  background: var(--dark-gray-1);
+  border: 1px solid var(--dark-gray-3);
+  padding: 1.5rem;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.test-result.success {
+  border-color: var(--pure-white);
+  box-shadow: inset 0 0 0 1px var(--pure-white);
+}
+
+.test-result.error {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
+.test-result h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-sans);
+}
+
+/* Status Indicators */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--dark-black);
+  border: 1px solid var(--medium-gray);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: var(--font-mono);
+}
+
+.status-indicator.success {
+  border-color: var(--pure-white);
+  color: var(--pure-white);
+}
+
+.status-indicator.success::before {
+  content: '[PASS]';
+  margin-right: 0.5rem;
+}
+
+.status-indicator.error {
+  border-color: var(--light-gray);
+  color: var(--light-gray);
+  border-style: dashed;
+}
+
+.status-indicator.error::before {
+  content: '[FAIL]';
+  margin-right: 0.5rem;
+}
+
+.status-indicator.loading {
+  border-color: var(--bright-gray);
+  color: var(--bright-gray);
+}
+
+.status-indicator.loading::before {
+  content: '[WAIT]';
+  margin-right: 0.5rem;
+  animation: loading-dots 1.5s infinite;
+}
+
+@keyframes loading-dots {
+  0% { content: '[WAIT]'; }
+  25% { content: '[WAIT.]'; }
+  50% { content: '[WAIT..]'; }
+  75% { content: '[WAIT...]'; }
+  100% { content: '[WAIT]'; }
+}
+
+/* Audio Player - Minimal */
+.audio-player {
+  width: 100%;
+  margin: 1rem 0;
+  height: 40px;
+  filter: invert(1) opacity(0.8);
+}
+
+/* Test Details - Terminal Output */
+.test-details {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--pure-black);
+  border: 1px solid var(--dark-gray-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--bright-gray);
+  position: relative;
+  overflow-x: auto;
+}
+
+.test-details::before {
+  content: '$ ';
+  color: var(--light-gray);
+  font-weight: 600;
+}
+
+.test-details code {
+  color: var(--pure-white);
+  background: var(--dark-gray-2);
+  padding: 0.125rem 0.375rem;
+  font-size: 0.7rem;
+}
+
+/* Code Examples - Terminal Windows */
+.code-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 0;
+  background: var(--dark-gray-3);
+  padding: 0;
+  border: 1px solid var(--dark-gray-3);
+  border-bottom: none;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: var(--dark-gray-2);
+  border: none;
+  border-right: 1px solid var(--dark-gray-3);
+  color: var(--light-gray);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-mono);
+}
+
+.tab-btn:last-child {
+  border-right: none;
+}
+
+.tab-btn:hover {
+  background: var(--dark-gray-1);
+  color: var(--bright-gray);
+}
+
+.tab-btn.active {
+  background: var(--pure-black);
+  color: var(--pure-white);
+  border-bottom: 1px solid var(--pure-black);
+}
+
+.code-content {
+  display: none;
+  position: relative;
+}
+
+.code-content.active {
+  display: block;
+}
+
+.code-content pre {
+  background: var(--pure-black);
+  border: 1px solid var(--dark-gray-3);
+  border-top: none;
+  padding: 1.5rem;
+  overflow-x: auto;
+  margin: 0;
+  position: relative;
+}
+
+.code-content pre::before {
+  content: '// CODE SAMPLE';
+  position: absolute;
+  top: 0.5rem;
+  right: 1rem;
+  color: var(--light-gray);
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  opacity: 0.5;
+}
+
+.code-content code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--off-white);
+}
+
+/* Copy Button */
+.copy-btn {
+  position: absolute;
+  top: 1.75rem;
+  right: 0.5rem;
+  background: var(--dark-gray-2);
+  border: 1px solid var(--medium-gray);
+  border-radius: 3px;
+  padding: 0.4rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--light-gray);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.copy-btn:hover {
+  opacity: 1;
+  background: var(--dark-gray-3);
+  color: var(--bright-gray);
+  transform: translateY(-1px);
+}
+
+.copy-btn:active {
+  transform: translateY(0);
+}
+
+.copy-btn.copied {
+  background: var(--medium-gray);
+  color: var(--pure-white);
+  opacity: 1;
+}
+
+
+.copy-btn.copied .copy-text {
+  content: 'Copied!';
+}
+
+
+/* Footer */
+footer {
+  margin-top: 3rem;
+  padding: 2rem 0;
+  text-align: center;
+  border-top: 1px solid var(--dark-gray-3);
+  position: relative;
+}
+
+footer::before {
+  content: '---[ END OF TRANSMISSION ]---';
+  position: absolute;
+  top: -0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--pure-black);
+  padding: 0 1rem;
+  font-size: 0.7rem;
+  color: var(--light-gray);
+  font-family: var(--font-mono);
+}
+
+footer a {
+  color: var(--pure-white);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  margin: 0 1rem;
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+footer a::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--pure-white);
+  transition: width 0.3s ease;
+}
+
+footer a:hover::after {
+  width: 100%;
+}
+
+.credits {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--light-gray);
+  font-family: var(--font-mono);
+}
+
+/* Remove background glow - no longer needed */
+.bg-glow {
+  display: none;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  background: var(--pure-black);
+}
+
+::-webkit-scrollbar-track {
+  border: 1px solid var(--dark-gray-3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--medium-gray);
+  border: 1px solid var(--dark-gray-3);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--light-gray);
+}
+
+/* Focus States */
+*:focus-visible {
+  outline: 1px solid var(--pure-white);
+  outline-offset: 2px;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+  
+  header h1 {
+    font-size: 2rem;
+    animation: none; /* Disable glitch on mobile for performance */
+  }
+  
+  .signature-card {
+    padding: 1.5rem;
+  }
+  
+  .url-input-section {
+    flex-direction: column;
+  }
+  
+  .comparison-grid,
+  .capabilities-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Terminal cursor animation */
+.terminal-cursor::after {
+  content: '_';
+  animation: terminal-blink 1s step-end infinite;
+  font-weight: 600;
+}
+
+/* ASCII art decoration for headers */
+.ascii-decor {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--light-gray);
+  white-space: pre;
+  line-height: 1;
+  opacity: 0.3;
+}
+
+/* Additional terminal styling */
+.terminal-prompt {
+  color: var(--light-gray);
+  font-size: 0.875rem;
+}
+
+.terminal-prompt::before {
+  content: 'root@dap:~$ ';
+  color: var(--pure-white);
+  font-weight: 600;
+}

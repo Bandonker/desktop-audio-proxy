@@ -2,8 +2,75 @@
 
 All notable changes to Desktop Audio Proxy will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.1.0] - 2025-06-30
+
+### Added
+- **Enhanced Tauri Integration** 
+  - Real system audio info detection via `invoke('get_system_audio_info')`
+  - Audio metadata extraction with `getAudioMetadata(filePath)` method
+  - Audio device enumeration with `getAudioDevices()` method
+  - Enhanced codec detection with system-level capabilities
+  - Full Tauri backend communication integration
+
+- **Enhanced Electron Integration** 
+  - System audio info via `electronAPI.getSystemAudioInfo()`
+  - Audio metadata extraction via `electronAPI.getAudioMetadata(filePath)`
+  - Audio device enumeration via `electronAPI.getAudioDevices()`
+  - System audio settings via `electronAPI.getSystemAudioSettings()`
+  - Electron and Chromium version detection
+  - Complete IPC integration for audio capabilities
+
+- **Advanced Codec Detection** 
+  - Comprehensive format testing (MP3, OGG, WAV, AAC, FLAC, WEBM, M4A)
+  - Codec-specific testing with detailed capabilities mapping
+  - Enhanced support reporting with granular codec information
+  - Platform-specific codec enhancement integration
+
+- **Improved URL Processing** 
+  - Enhanced local file detection for `blob:` and `data:` URLs
+  - Better Tauri `convertFileSrc` integration with error handling
+  - Improved fallback mechanisms for file conversion failures
+
+### Enhanced
+- **Error Handling** - Comprehensive error handling and logging throughout all services
+- **Type Safety** - Enhanced TypeScript types for all new methods and capabilities
+- **Platform Integration** - Deep integration with platform-specific audio APIs
+
+### Technical Improvements
+- Enhanced system-level audio integration hooks
+- Improved cross-platform compatibility and feature detection
+- Optimized code structure
+
+- **Interactive Demo** 
+  - Comprehensive web demo with real library integration testing
+  - Auto-detection of available package builds (local, CDN, various formats)
+  - Dynamic version detection from proxy server health endpoint
+  - Feature showcase for v1.1.0 capabilities (codec detection, metadata, devices)
+  - Real-time CORS testing with direct URL vs proxy comparison
+  - Enhanced debugging tools with exposed internals for manual testing
+  - Visual upgrade guidance for users on older versions
+  - Multiple version conflict detection and warnings
+
+- **Professional CLI Demo** 
+  - Terminal-based interface with professional ASCII art
+  - Real-time system status matrix with live proxy detection
+  - Interactive command system for URL testing and diagnostics
+  - Automatic proxy server scanning across multiple ports (3002, 3001, 3003)
+  - Smart user guidance with helpful tips when proxy is offline
+  - Environment detection showing "Node.js CLI" for terminal usage
+
+### Fixed
+- **Version Detection** - Web and CLI demos now dynamically detect library version from proxy server
+- **Proxy Status Detection** - Real-time proxy availability checking instead of hardcoded values
+- **Multiple Version Handling** - Proper detection and warnings for conflicting installed versions
+
+### Developer Experience
+- Enhanced debugging with comprehensive logging
+- Better error messages with context-specific information  
+- Improved TypeScript IntelliSense with complete method signatures
+- Platform-specific method availability based on environment detection
+- Professional CLI interface for terminal-based testing and diagnostics
+- Smart user guidance system with automatic helpful tips
 
 ## [1.0.3] - 2025-06-29
 
@@ -76,6 +143,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Radio streaming URLs ✅
 
 ### Known Limitations
-- Transcoding features planned for v1.1.0
-- CLI tool planned for v1.1.0
-- React/Vue hooks planned for v1.2.0
+- Transcoding features planned for v1.2.0  
+- React/Vue hooks planned for v1.3.0
+- CLI tool planned for v1.4.0

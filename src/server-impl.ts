@@ -107,7 +107,7 @@ export class AudioProxyServer {
     this.app.get('/health', (req: Request, res: Response) => {
       res.json({
         status: 'ok',
-        version: '1.0.0',
+        version: '1.1.0',
         uptime: process.uptime(),
         config: {
           port: this.actualPort || this.config.port,
@@ -328,10 +328,10 @@ export class AudioProxyServer {
             );
           }
           console.log(
-            `🎵 Desktop Audio Proxy running on http://${this.config.host}:${this.actualPort}`
+            `Desktop Audio Proxy running on http://${this.config.host}:${this.actualPort}`
           );
           console.log(
-            `📡 Use http://${this.config.host}:${this.actualPort}/proxy?url=YOUR_AUDIO_URL`
+            `Use http://${this.config.host}:${this.actualPort}/proxy?url=YOUR_AUDIO_URL`
           );
           resolve();
         });
@@ -351,7 +351,7 @@ export class AudioProxyServer {
     return new Promise(resolve => {
       if (this.server) {
         this.server.close(() => {
-          console.log('🛑 Desktop Audio Proxy stopped');
+          console.log('Desktop Audio Proxy stopped');
           resolve();
         });
       } else {

@@ -160,13 +160,15 @@ describe('Audio Services', () => {
     });
 
     describe('checkSystemCodecs', () => {
-      it('should return supported and missing codecs', async () => {
+      it('should return supported and missing codecs with capabilities', async () => {
         const codecInfo = await service.checkSystemCodecs();
 
         expect(codecInfo).toHaveProperty('supportedFormats');
         expect(codecInfo).toHaveProperty('missingCodecs');
+        expect(codecInfo).toHaveProperty('capabilities');
         expect(Array.isArray(codecInfo.supportedFormats)).toBe(true);
         expect(Array.isArray(codecInfo.missingCodecs)).toBe(true);
+        expect(typeof codecInfo.capabilities).toBe('object');
       });
 
       it('should correctly identify supported formats', async () => {
@@ -175,6 +177,9 @@ describe('Audio Services', () => {
         expect(codecInfo.supportedFormats).toContain('MP3');
         expect(codecInfo.supportedFormats).toContain('WAV');
         expect(codecInfo.supportedFormats).toContain('OGG');
+        expect(codecInfo.capabilities).toHaveProperty('MP3');
+        expect(codecInfo.capabilities).toHaveProperty('WAV');
+        expect(codecInfo.capabilities).toHaveProperty('OGG');
       });
 
       it('should correctly identify missing codecs', async () => {
@@ -183,6 +188,31 @@ describe('Audio Services', () => {
         expect(codecInfo.missingCodecs).toContain('AAC');
         expect(codecInfo.missingCodecs).toContain('FLAC');
         expect(codecInfo.missingCodecs).toContain('WEBM');
+        expect(codecInfo.capabilities).toHaveProperty('AAC');
+        expect(codecInfo.capabilities).toHaveProperty('FLAC');
+        expect(codecInfo.capabilities).toHaveProperty('WEBM');
+      });
+
+      it('should include electron version info when available', async () => {
+        // Mock the getEnvironment method to return 'electron'
+        const mockGetEnvironment = jest.fn().mockReturnValue('electron');
+        (service as any).getEnvironment = mockGetEnvironment;
+
+        // Mock process.versions for electron
+        (global as any).process = {
+          versions: {
+            electron: '25.0.0',
+            chrome: '114.0.0',
+          },
+        };
+
+        const codecInfo = await service.checkSystemCodecs();
+
+        expect(codecInfo).toHaveProperty('electronVersion');
+        expect(codecInfo).toHaveProperty('chromiumVersion');
+        expect(codecInfo).toHaveProperty('capabilities');
+        expect(codecInfo.electronVersion).toBe('25.0.0');
+        expect(codecInfo.chromiumVersion).toBe('114.0.0');
       });
     });
 

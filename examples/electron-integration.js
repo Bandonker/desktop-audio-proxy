@@ -18,14 +18,12 @@ async function createWindow() {
   if (process.env.NODE_ENV === 'development') {
     try {
       proxyServer = await startProxyServer({ 
-        port: 3001,
+        port: 3002,
         enableLogging: true,
-        cors: {
-          origin: true, // Allow all origins in development
-          credentials: true
-        }
+        corsOrigins: '*', // Allow all origins in development
+        enableCredentials: true
       });
-      console.log('🎵 Audio proxy server started on port 3001');
+      console.log('🎵 Audio proxy server started on port 3002');
     } catch (error) {
       console.error('Failed to start proxy server:', error);
     }
@@ -48,7 +46,7 @@ app.whenReady().then(createWindow);
 
 app.on('before-quit', () => {
   if (proxyServer) {
-    proxyServer.close();
+    proxyServer.stop();
   }
 });
 
@@ -83,7 +81,7 @@ import { ElectronAudioService } from 'desktop-audio-proxy';
 // Initialize the service with Electron-specific options
 const audioService = new ElectronAudioService({
   audioOptions: {
-    proxyUrl: 'http://localhost:3001',
+    proxyUrl: 'http://localhost:3002',
     autoDetect: true,
     fallbackToOriginal: true,
     retryAttempts: 3,
@@ -158,11 +156,20 @@ class ElectronAudioPlayer {
       const environment = audioService.getEnvironment();
       const proxyAvailable = await audioService.isProxyAvailable();
       
+      // v1.1.0: Enhanced health check with metadata
+      const metadata = await audioService.getAudioMetadata(url).catch(() => null);
+      const deviceInfo = await audioService.getAudioDevices().catch(() => []);
+      
       return {
         canPlay,
         environment,
         proxyAvailable,
-        electronVersion: window.electronAPI?.getAppVersion()
+        electronVersion: window.electronAPI?.getAppVersion(),
+        
+        // v1.1.0 features
+        metadata,
+        availableDevices: deviceInfo,
+        hasEnhancedFeatures: true
       };
     } catch (error) {
       console.error('[ElectronAudio] Health check failed:', error);

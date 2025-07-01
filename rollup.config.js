@@ -95,7 +95,7 @@ export default [
         declarationDir: './dist'
       })
     ],
-    external: ['axios', 'express', 'cors', 'stream']
+    external: ['axios', 'express', 'cors', 'stream', 'net']
   },
   // Server entry - CommonJS
   {
@@ -113,7 +113,7 @@ export default [
         tsconfig: './tsconfig.json'
       })
     ],
-    external: ['axios', 'express', 'cors', 'stream']
+    external: ['axios', 'express', 'cors', 'stream', 'net']
   },
   // Legacy server build (for compatibility)
   {
@@ -131,6 +131,6 @@ export default [
         tsconfig: './tsconfig.json'
       })
     ],
-    external: ['axios', 'express', 'cors', 'stream']
+    external: ['axios', 'express', 'cors', 'stream', 'net']
   }
 ];

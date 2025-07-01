@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desktop Audio Proxy - Live Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles-bandonker-signature.css">
+    <link rel="icon" href="../assets/logo.png" type="image/png">
+</head>
+<body>
+    <!-- Background removed -->
+    
+    <div class="container">
+        <header>
+            <div class="header-title">
+                <img src="../assets/logo.png" alt="DAP Logo" class="logo">
+                <h1>Desktop Audio Proxy</h1>
+            </div>
+            <p class="subtitle">Eliminates CORS issues for audio streaming in desktop apps</p>
+        </header>
+
+        <div class="demo-section">
+            <div class="signature-card status-panel">
+                <h3>System Status</h3>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <span class="label">Environment:</span>
+                        <span id="environment" class="value">Detecting...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Proxy Server:</span>
+                        <span id="proxy-status" class="value">Checking...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Library Version:</span>
+                        <span id="library-version" class="value">Detecting...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="signature-card" style="margin-top: 30px;">
+                <h3>Library Capabilities</h3>
+                <div class="capabilities-grid">
+                    <div class="capability-card success">
+                        <h4 style="color: var(--accent-success);">✅ What Desktop Audio Proxy CAN Do:</h4>
+                        <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.8;">
+                            <li>• Bypass CORS restrictions for direct audio file URLs</li>
+                            <li>• Handle MP3, WAV, OGG, FLAC, and other audio formats</li>
+                            <li>• Support range requests for audio seeking</li>
+                            <li>• Auto-detect Tauri/Electron/Web environments</li>
+                            <li>• Provide fallback strategies when proxy unavailable</li>
+                            <li>• Handle redirects and authentication headers</li>
+                            <li>• Cache audio streams for better performance</li>
+                        </ul>
+                    </div>
+                    <div class="capability-card danger">
+                        <h4 style="color: var(--accent-error);">❌ What It CANNOT Do:</h4>
+                        <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.8;">
+                            <li>• Extract audio from YouTube/Spotify/SoundCloud pages</li>
+                            <li>• Convert HTML web pages to audio streams</li>
+                            <li>• Bypass DRM or encrypted content</li>
+                            <li>• Download copyrighted material</li>
+                            <li>• Work with streaming platform APIs</li>
+                            <li>• Handle video files (use direct audio URLs only)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="signature-card test-panel">
+                <h3>🎵 Audio URL Tester</h3>
+                <div class="url-input-section">
+                    <input 
+                        type="url" 
+                        id="audio-url" 
+                        placeholder="Paste any audio URL (podcast, radio stream, etc.)"
+                        value="https://d3ctxlq1ktw2nl.cloudfront.net/production/2019-6-29/19776794-44100-2-1840c87ba7791.mp3"
+                    >
+                    <button id="test-btn" class="btn btn-primary">Test URL</button>
+                </div>
+                
+                <div class="preset-urls">
+                    <h4>Try these example URLs to see the library in action:</h4>
+                    <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 1rem;">
+                        <strong>Expected behavior:</strong> The "Without Proxy" test should fail with CORS errors when accessing these external audio URLs directly from the browser,
+                        while "With Proxy" should successfully bypass CORS restrictions and play the audio by routing through the Desktop Audio Proxy server.
+                        This demonstrates how the library solves cross-origin access issues for desktop applications.
+                    </p>
+                    <div class="preset-buttons">
+                        <button data-url="https://d3ctxlq1ktw2nl.cloudfront.net/production/2019-6-29/19776794-44100-2-1840c87ba7791.mp3" title="Anchor/CloudFront - No CORS headers, perfect demonstration of CORS blocking">Podcast Episode (CORS Blocked)</button>
+                        <button data-url="https://d3ctxlq1ktw2nl.cloudfront.net/production/2019-4-20/15524768-44100-2-08241a87e299b.mp3" title="Another Anchor podcast - Also CORS blocked">Tech Podcast (CORS Blocked)</button>
+                        <button data-url="https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3" title="Learning Container - No CORS headers">Kalimba MP3 (CORS Blocked)</button>
+                        <button data-url="https://www.kozco.com/tech/piano2.wav" title="Kozco Tech - No CORS headers, perfect for demonstrating CORS bypass">Piano WAV (CORS Blocked)</button>
+                        <button data-url="https://traffic.libsyn.com/secure/noclippodcast/233.mp3" title="Libsyn - Has CORS headers, should work both ways (for comparison)">Gaming Podcast (CORS Allowed)</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="signature-card comparison-panel">
+                <h3>Before vs After Comparison</h3>
+                
+                <div class="comparison-grid">
+                    <!-- Without Proxy -->
+                    <div class="test-result">
+                        <h4>❌ Without Proxy (Direct URL)</h4>
+                        <div class="test-info">
+                            <div class="status-indicator" id="direct-status">⏳ Not tested</div>
+                            <div class="error-message" id="direct-error"></div>
+                        </div>
+                        <audio controls id="direct-player" class="audio-player">
+                            <p>Your browser doesn't support audio playback.</p>
+                        </audio>
+                        <div class="test-details" id="direct-details"></div>
+                    </div>
+
+                    <!-- With Proxy -->
+                    <div class="test-result">
+                        <h4>✅ With Proxy (CORS Bypass)</h4>
+                        <div class="test-info">
+                            <div class="status-indicator" id="proxy-test-status">⏳ Not tested</div>
+                            <div class="success-message" id="proxy-success"></div>
+                        </div>
+                        <audio controls id="proxy-player" class="audio-player">
+                            <p>Your browser doesn't support audio playback.</p>
+                        </audio>
+                        <div class="test-details" id="proxy-details"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="signature-card code-example">
+                <h3>Implementation Code</h3>
+                <div class="code-tabs">
+                    <button class="tab-btn active" onclick="showTab('basic')">Basic Usage</button>
+                    <button class="tab-btn" onclick="showTab('tauri')">Tauri Integration</button>
+                    <button class="tab-btn" onclick="showTab('electron')">Electron Integration</button>
+                </div>
+                
+                <div id="basic-code" class="code-content active">
+                    <button class="copy-btn" onclick="copyCode('basic')" title="Copy code">
+                        <span class="copy-text">Copy</span>
+                    </button>
+                    <pre><code>import { createAudioClient } from 'desktop-audio-proxy';
+
+// Create client with auto-detection
+const audioClient = createAudioClient();
+
+// Convert any audio URL to a playable URL
+const playableUrl = await audioClient.getPlayableUrl(
+  'https://example.com/podcast.mp3'
+);
+
+// Use in your audio element
+audioElement.src = playableUrl;</code></pre>
+                </div>
+                
+                <div id="tauri-code" class="code-content">
+                    <button class="copy-btn" onclick="copyCode('tauri')" title="Copy code">
+                        <span class="copy-text">Copy</span>
+                    </button>
+                    <pre><code>import { TauriAudioService } from 'desktop-audio-proxy';
+
+const audioService = new TauriAudioService({
+  autoDetect: true
+});
+
+// In your audio player
+const streamUrl = await audioService.getStreamableUrl(originalUrl);
+audioElement.src = streamUrl;</code></pre>
+                </div>
+                
+                <div id="electron-code" class="code-content">
+                    <button class="copy-btn" onclick="copyCode('electron')" title="Copy code">
+                        <span class="copy-text">Copy</span>
+                    </button>
+                    <pre><code>import { ElectronAudioService } from 'desktop-audio-proxy';
+
+const audioService = new ElectronAudioService({
+  enableTranscoding: true
+});
+
+const streamUrl = await audioService.getStreamableUrl(originalUrl);</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>
+                <a href="https://github.com/bandonker/desktop-audio-proxy" target="_blank">📦 View on GitHub</a> |
+                <a href="https://www.npmjs.com/package/desktop-audio-proxy" target="_blank">📥 Install from npm</a> |
+                <a href="../README.md" target="_blank">📚 Documentation</a>
+            </p>
+            
+            <div class="sponsor-badges" style="margin: 1.5rem 0; text-align: center;">
+                <a href="https://ko-fi.com/bandonker" target="_blank">
+                    <img src="https://img.shields.io/badge/Ko--fi-Bandonker-29ABE0?style=flat-square&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"/>
+                </a>
+                <a href="https://www.buymeacoffee.com/Bandonker" target="_blank">
+                    <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Bandonker-yellow?style=flat-square&logo=buymeacoffee&logoColor=black" alt="Coffee Me"/>
+                </a>
+                <a href="https://patreon.com/Bandonker" target="_blank">
+                    <img src="https://img.shields.io/badge/Patreon-Bandonker-F96854?style=flat-square&logo=patreon&logoColor=white" alt="Support on Patreon"/>
+                </a>
+            </div>
+            
+            <p class="credits">Made with ❤️ by <a href="https://github.com/bandonker" target="_blank">Bandonker</a></p>
+        </footer>
+    </div>
+
+    <!-- Full Implementation using actual library -->
+    <script type="module" src="demo-full.js"></script>
+    
+    <!-- Debug Panel for Inspection -->
+    <script>
+        // Add debug console for inspection
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log(' Desktop Audio Proxy Demo Loaded');
+            console.log(' Available for inspection:');
+            console.log('   • window.dapDemo - Demo instance and methods');
+            console.log('   • window.dapDemo.audioClient - Real AudioProxyClient instance');
+            console.log('   • window.dapDemo.testUrl(url) - Test any URL manually');
+            console.log('   • window.dapDemo.getInternalState() - View internal state');
+            console.log(' Try: window.dapDemo.testUrl("https://example.com/audio.mp3")');
+            // Mouse effect removed
+        });
+        
+        // Copy code function
+        function copyCode(tabName) {
+            const codeContent = document.querySelector(`#${tabName}-code code`);
+            if (!codeContent) return;
+            
+            const text = codeContent.textContent;
+            const button = document.querySelector(`#${tabName}-code .copy-btn`);
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(text).then(() => {
+                // Update button appearance
+                button.classList.add('copied');
+                const textSpan = button.querySelector('.copy-text');
+                
+                textSpan.textContent = 'Copied!';
+                
+                // Reset after 2 seconds
+                setTimeout(() => {
+                    button.classList.remove('copied');
+                    textSpan.textContent = 'Copy';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                // Fallback for older browsers
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                
+                // Still show feedback
+                button.classList.add('copied');
+                setTimeout(() => button.classList.remove('copied'), 2000);
+            });
+        }
+        
+        // Make copyCode function global
+        window.copyCode = copyCode;
+    </script>
+</body>
+</html>

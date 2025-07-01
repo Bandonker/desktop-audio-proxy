@@ -13,7 +13,7 @@ import { TauriAudioService } from 'desktop-audio-proxy';
 // Initialize the service
 const audioService = new TauriAudioService({
   audioOptions: {
-    proxyUrl: 'http://localhost:3001',
+    proxyUrl: 'http://localhost:3002',
     autoDetect: true,
     fallbackToOriginal: true,
     retryAttempts: 3
@@ -75,7 +75,7 @@ async function initializeApp() {
   if (import.meta.env.DEV) {
     try {
       await startProxyServer({ 
-        port: 3001,
+        port: 3002,
         enableLogging: true 
       });
       console.log('🎵 Audio proxy server started');
@@ -113,14 +113,26 @@ export const playRadioStation = async (station) => {
   }
 };
 
-// Example: Environment-specific handling
-export const getEnvironmentConfig = () => {
-  const environment = audioService.isInTauri() ? 'tauri' : 'web';
+// Example: Environment-specific handling with v1.1.0 features
+export const getEnvironmentConfig = async () => {
+  const environment = audioService.getEnvironment();
+  
+  // v1.1.0: Enhanced codec detection
+  const codecSupport = await audioService.checkSystemCodecs().catch(() => ({}));
+  
+  // v1.1.0: Audio device enumeration (Tauri-specific)
+  const audioDevices = environment === 'tauri' ? 
+    await audioService.getAudioDevices().catch(() => []) : [];
   
   return {
     environment,
     needsProxy: environment === 'web' || window.location.hostname === 'localhost',
-    proxyUrl: 'http://localhost:3001',
-    autoStart: environment === 'tauri' && import.meta.env.DEV
+    proxyUrl: 'http://localhost:3002',
+    autoStart: environment === 'tauri' && import.meta.env.DEV,
+    
+    // v1.1.0 features
+    codecSupport,
+    audioDevices,
+    hasEnhancedFeatures: true
   };
 };
