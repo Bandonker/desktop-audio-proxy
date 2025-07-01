@@ -7,8 +7,8 @@ describe('AudioProxyClient', () => {
   let client: AudioProxyClient;
 
   beforeEach(() => {
-    // Clear all mock calls between tests
-    jest.clearAllMocks();
+    // Clear mock call history but preserve implementations
+    mockFetch.mockClear();
     
     client = new AudioProxyClient({
       proxyUrl: 'http://localhost:3001',
@@ -16,6 +16,11 @@ describe('AudioProxyClient', () => {
       fallbackToOriginal: true,
       retryAttempts: 2,
     });
+  });
+
+  afterEach(() => {
+    // Reset any custom implementations after each test
+    mockFetch.mockReset();
   });
 
   describe('Environment Detection', () => {
@@ -250,8 +255,6 @@ describe('AudioProxyClient', () => {
   describe('URL Validation', () => {
     beforeEach(() => {
       (global as any).window = {};
-      // Ensure fresh mock state for this test group
-      jest.clearAllMocks();
     });
 
     it('should handle URL validation through canPlayUrl', async () => {

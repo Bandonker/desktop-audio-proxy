@@ -15,8 +15,9 @@
   versions: {}
 };
 
-// Mock fetch for testing
-global.fetch = jest.fn();
+// Create a properly typed fetch mock
+const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
+global.fetch = mockFetch;
 
 // Mock Audio constructor
 global.Audio = jest.fn().mockImplementation(() => ({
@@ -33,7 +34,10 @@ global.Audio = jest.fn().mockImplementation(() => ({
   ended: false
 }));
 
-// Reset mocks before each test
+// Only reset mock call history, not implementations
 beforeEach(() => {
-  jest.clearAllMocks();
+  // Clear call history but preserve implementations set by individual tests
+  mockFetch.mockClear();
+  // Reset Audio mock calls
+  (global.Audio as jest.Mock).mockClear();
 });
