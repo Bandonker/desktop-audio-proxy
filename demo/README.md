@@ -23,10 +23,8 @@ A comprehensive web-based demonstration featuring:
 npm run demo
 
 # Option 2: Simple setup with proxy
-npm run demo:simple
+npm run demo:cli
 
-# Option 3: Open directly in browser
-open demo/index.html
 ```
 
 ### What You Can Test

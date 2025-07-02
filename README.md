@@ -94,7 +94,7 @@ Seamless proxy server integration with automatic port detection:
   <br><em>Live proxy server status with health monitoring and configuration details</em>
 </p>
 
->  Try it yourself: Run `npm run demo:cli` for the terminal demo or `npm run demo:serve` for the web demo
+>  Try it yourself: Run `npm run demo:cli` for the terminal demo or `npm run demo` for the web demo
 
 ## The Problem
 
@@ -150,9 +150,11 @@ import { startProxyServer, AudioProxyServer } from 'desktop-audio-proxy/server';
 
 **See Desktop Audio Proxy in action!** Our comprehensive demo provides real-time testing with automatic library detection:
 
- **[Demo](demo/index.html)** - Open `demo/index.html` in your browser
+```bash
+npm run demo
+```
 
-**v1.1.0 Demo Features:**
+**v1.1.2 Demo Features:**
 -  **Auto-Detection** - Automatically finds and loads available library builds (local, CDN, various formats)
 -  **Version Detection** - Shows current library version with upgrade recommendations
 -  **Enhanced Features Showcase** - Live codec detection, metadata extraction, device enumeration
@@ -199,7 +201,7 @@ npm run demo:cli
 2) System Diagnostics      - Check library capabilities and network
 3) Proxy Server Status     - Monitor proxy server health
 4) Show Example URLs       - Curated list of test URLs
-5) Advanced Features Demo  - Showcase enhanced v1.1.0 features
+5) Advanced Features Demo  - Showcase enhanced v1.1.2 features
 6) View Test Results       - History of all URL tests
 7) Show Startup Commands   - Display setup commands for full demo
 h) Help & Documentation    - Learn about the library
@@ -291,18 +293,10 @@ const audioClient = createAudioClient({
     timeout: 60000,
     maxRedirects: 20,
     enableLogging: true,
-    enableTranscoding: false, // Note: Full transcoding planned for v1.2.0
+    enableTranscoding: false,
     cacheEnabled: true,
     cacheTTL: 3600
   }
-  
-  // Note: transcodingOptions will be available in v1.2.0
-  // transcodingOptions: {
-  //   format: 'mp3',
-  //   bitrate: 128,
-  //   sampleRate: 44100,
-  //   channels: 2
-  // }
 });
 ```
 
@@ -590,9 +584,9 @@ npm run build
 
 # 2. Start proxy server  
 npm run proxy:start
+npm run demo:cli
 
-# 3. Open demo/index.html in browser
-# The demo will auto-detect your build and show version info
+
 ```
 
 ## Development
