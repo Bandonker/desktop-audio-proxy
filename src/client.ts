@@ -1,5 +1,32 @@
 import { AudioProxyOptions, StreamInfo, Environment } from './types';
 
+// Type declarations for window objects
+declare global {
+  interface Window {
+    __TAURI__?: {
+      tauri: {
+        convertFileSrc: (_filePath: string) => string;
+        invoke?: (
+          _command: string,
+          _args?: Record<string, unknown>
+        ) => Promise<unknown>;
+      };
+    };
+    electronAPI?: unknown;
+  }
+}
+
+interface ProcessVersions {
+  electron?: string;
+  [key: string]: string | undefined;
+}
+
+declare const process:
+  | {
+      versions?: ProcessVersions;
+    }
+  | undefined;
+
 export class AudioProxyClient {
   private options: Required<AudioProxyOptions>;
   private environment: Environment;
@@ -22,14 +49,14 @@ export class AudioProxyClient {
       return 'unknown';
     }
 
-    if ((window as any).__TAURI__) {
+    if (window.__TAURI__) {
       return 'tauri';
     }
 
     if (
-      (window as any).electronAPI ||
+      window.electronAPI ||
       (typeof process !== 'undefined' &&
-        process.versions &&
+        process?.versions &&
         process.versions.electron)
     ) {
       return 'electron';
@@ -61,10 +88,12 @@ export class AudioProxyClient {
         return true;
       }
       return false;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       console.warn(
         '[AudioProxyClient] Proxy server unavailable:',
-        error.message
+        errorMessage
       );
       return false;
     }
@@ -199,9 +228,9 @@ export class AudioProxyClient {
     }
 
     // In Tauri, use convertFileSrc for file:// URLs
-    if (this.environment === 'tauri' && (window as any).__TAURI__) {
+    if (this.environment === 'tauri' && window.__TAURI__) {
       try {
-        const { convertFileSrc } = (window as any).__TAURI__.tauri;
+        const { convertFileSrc } = window.__TAURI__.tauri;
         if (
           url.startsWith('file://') ||
           url.startsWith('/') ||

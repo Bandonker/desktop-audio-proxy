@@ -175,8 +175,8 @@ header h1::before {
   top: 0;
   left: 0;
   z-index: -1;
-  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.15);
-  text-stroke: 1px rgba(255, 255, 255, 0.15);
+  outline: 1px rgba(255, 255, 255, 0.15);
+  outline: 1px rgba(255, 255, 255, 0.15);
   color: transparent;
 }
 

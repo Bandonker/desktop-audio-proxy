@@ -1,6 +1,8 @@
 import { AudioProxyClient } from './client';
 import { AudioServiceOptions } from './types';
 
+// Type declarations for Tauri API that extends client.ts declarations
+
 export class TauriAudioService {
   private audioClient: AudioProxyClient;
 
@@ -85,20 +87,21 @@ export class TauriAudioService {
     }
 
     // Check for additional Tauri-specific audio capabilities if available
-    if (this.getEnvironment() === 'tauri' && (window as any).__TAURI__) {
+    if (this.getEnvironment() === 'tauri' && window.__TAURI__?.tauri?.invoke) {
       try {
-        const { invoke } = (window as any).__TAURI__.tauri;
+        const { invoke } = window.__TAURI__.tauri;
 
         // Try to get system audio info from Tauri backend
         const systemAudioInfo = await invoke('get_system_audio_info').catch(
           () => null
         );
-        if (systemAudioInfo) {
+        if (systemAudioInfo && typeof systemAudioInfo === 'object') {
           capabilities['tauri_system_info'] = JSON.stringify(systemAudioInfo);
 
           // Enhanced format support based on system capabilities
-          if (systemAudioInfo.supportedFormats) {
-            systemAudioInfo.supportedFormats.forEach((format: string) => {
+          const audioInfo = systemAudioInfo as { supportedFormats?: string[] };
+          if (audioInfo.supportedFormats) {
+            audioInfo.supportedFormats.forEach((format: string) => {
               if (!supportedFormats.includes(format)) {
                 supportedFormats.push(format);
                 // Remove from missing codecs if it was there
@@ -129,13 +132,20 @@ export class TauriAudioService {
     channels?: number;
     format?: string;
   } | null> {
-    if (this.getEnvironment() !== 'tauri' || !(window as any).__TAURI__) {
+    if (this.getEnvironment() !== 'tauri' || !window.__TAURI__?.tauri?.invoke) {
       return null;
     }
 
     try {
-      const { invoke } = (window as any).__TAURI__.tauri;
-      return await invoke('get_audio_metadata', { path: filePath });
+      const { invoke } = window.__TAURI__.tauri;
+      const result = await invoke('get_audio_metadata', { path: filePath });
+      return result as {
+        duration?: number;
+        bitrate?: number;
+        sampleRate?: number;
+        channels?: number;
+        format?: string;
+      } | null;
     } catch (error) {
       console.warn('[TauriAudioService] Failed to get audio metadata:', error);
       return null;
@@ -147,13 +157,17 @@ export class TauriAudioService {
     inputDevices: Array<{ id: string; name: string }>;
     outputDevices: Array<{ id: string; name: string }>;
   } | null> {
-    if (this.getEnvironment() !== 'tauri' || !(window as any).__TAURI__) {
+    if (this.getEnvironment() !== 'tauri' || !window.__TAURI__?.tauri?.invoke) {
       return null;
     }
 
     try {
-      const { invoke } = (window as any).__TAURI__.tauri;
-      return await invoke('get_audio_devices');
+      const { invoke } = window.__TAURI__.tauri;
+      const result = await invoke('get_audio_devices');
+      return result as {
+        inputDevices: Array<{ id: string; name: string }>;
+        outputDevices: Array<{ id: string; name: string }>;
+      } | null;
     } catch (error) {
       console.warn('[TauriAudioService] Failed to get audio devices:', error);
       return null;

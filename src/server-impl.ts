@@ -1,8 +1,9 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import axios, { AxiosResponse } from 'axios';
+import axios, { AxiosResponse, AxiosError } from 'axios';
 import { Readable } from 'stream';
 import { createServer } from 'net';
+import { Server as HttpServer } from 'http';
 import { ProxyConfig } from './types';
 
 // Utility function to check if a port is available
@@ -45,7 +46,7 @@ async function findAvailablePort(
 
 export class AudioProxyServer {
   private app: express.Application;
-  private server: any;
+  private server: HttpServer | null = null;
   private config: Required<ProxyConfig>;
   private actualPort: number = 0;
 
@@ -107,7 +108,7 @@ export class AudioProxyServer {
     this.app.get('/health', (req: Request, res: Response) => {
       res.json({
         status: 'ok',
-        version: '1.1.0',
+        version: '1.1.1',
         uptime: process.uptime(),
         config: {
           port: this.actualPort || this.config.port,
@@ -148,18 +149,23 @@ export class AudioProxyServer {
           acceptRanges: response.headers['accept-ranges'],
           lastModified: response.headers['last-modified'],
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[AudioProxy] Info error:', error);
 
-        if (error.response) {
-          res.status(error.response.status).json({
-            error: `Upstream error: ${error.response.status} ${error.response.statusText}`,
-            url: url,
-          });
+        if (error && typeof error === 'object' && 'response' in error) {
+          const axiosError = error as AxiosError;
+          if (axiosError.response) {
+            res.status(axiosError.response.status).json({
+              error: `Upstream error: ${axiosError.response.status} ${axiosError.response.statusText}`,
+              url: url,
+            });
+          }
         } else {
+          const errorMessage =
+            error instanceof Error ? error.message : 'Unknown error';
           res.status(500).json({
             error: 'Failed to get stream info',
-            message: error.message || 'Unknown error',
+            message: errorMessage,
             url: url,
           });
         }
@@ -186,7 +192,7 @@ export class AudioProxyServer {
         });
 
         // Prepare request headers
-        const requestHeaders: any = {
+        const requestHeaders: Record<string, string> = {
           'User-Agent': this.config.userAgent,
           Accept: req.headers.accept || 'audio/*,*/*;q=0.1',
           'Accept-Language': req.headers['accept-language'] || 'en-US,en;q=0.9',
@@ -268,42 +274,58 @@ export class AudioProxyServer {
 
         // Pipe the stream to response
         stream.pipe(res);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[AudioProxy] Proxy error:', error);
 
         if (!res.headersSent) {
-          if (error.response) {
-            // HTTP error from upstream
-            res.status(error.response.status).json({
-              error: `Upstream error: ${error.response.status} ${error.response.statusText}`,
-              url: url,
-            });
-          } else if (error.code === 'ENOTFOUND') {
-            // DNS resolution failed
-            res.status(404).json({
-              error: 'Audio source not found',
-              message: 'Unable to resolve hostname',
-              url: url,
-            });
-          } else if (error.code === 'ECONNREFUSED') {
-            // Connection refused
-            res.status(503).json({
-              error: 'Audio source unavailable',
-              message: 'Connection refused',
-              url: url,
-            });
-          } else if (error.code === 'ETIMEDOUT') {
-            // Request timeout
-            res.status(408).json({
-              error: 'Request timeout',
-              message: 'Audio source did not respond in time',
-              url: url,
-            });
+          if (error && typeof error === 'object' && 'response' in error) {
+            const axiosError = error as AxiosError;
+            if (axiosError.response) {
+              // HTTP error from upstream
+              res.status(axiosError.response.status).json({
+                error: `Upstream error: ${axiosError.response.status} ${axiosError.response.statusText}`,
+                url: url,
+              });
+            }
+          } else if (error && typeof error === 'object' && 'code' in error) {
+            const nodeError = error as { code: string; message?: string };
+            if (nodeError.code === 'ENOTFOUND') {
+              // DNS resolution failed
+              res.status(404).json({
+                error: 'Audio source not found',
+                message: 'Unable to resolve hostname',
+                url: url,
+              });
+            } else if (nodeError.code === 'ECONNREFUSED') {
+              // Connection refused
+              res.status(503).json({
+                error: 'Audio source unavailable',
+                message: 'Connection refused',
+                url: url,
+              });
+            } else if (nodeError.code === 'ETIMEDOUT') {
+              // Request timeout
+              res.status(408).json({
+                error: 'Request timeout',
+                message: 'Audio source did not respond in time',
+                url: url,
+              });
+            } else {
+              // Generic error with code
+              const errorMessage = nodeError.message || 'Unknown error';
+              res.status(500).json({
+                error: 'Proxy request failed',
+                message: errorMessage,
+                url: url,
+              });
+            }
           } else {
             // Generic error
+            const errorMessage =
+              error instanceof Error ? error.message : 'Unknown error';
             res.status(500).json({
               error: 'Proxy request failed',
-              message: error.message || 'Unknown error',
+              message: errorMessage,
               url: url,
             });
           }
@@ -340,10 +362,10 @@ export class AudioProxyServer {
           reject(error);
         });
       });
-    } catch (error: any) {
-      throw new Error(
-        `Failed to start proxy server: ${error?.message || 'Unknown error'}`
-      );
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to start proxy server: ${errorMessage}`);
     }
   }
 

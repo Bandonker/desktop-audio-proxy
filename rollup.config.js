@@ -18,10 +18,17 @@ export default [
         tsconfig: './tsconfig.json',
         declaration: true,
         declarationDir: './dist',
-        rootDir: './src'
+        rootDir: './src',
+        compilerOptions: {
+          skipLibCheck: true,
+          noResolve: false,
+          moduleResolution: "node",
+          allowSyntheticDefaultImports: true,
+          esModuleInterop: true
+        }
       })
     ],
-    external: ['axios']
+    external: ['axios', 'react', 'vue']
   },
   // Main entry - Browser-safe CommonJS build
   {
@@ -36,10 +43,17 @@ export default [
       resolve({ browser: true }),
       commonjs(),
       typescript({
-        tsconfig: './tsconfig.json'
+        tsconfig: './tsconfig.json',
+        compilerOptions: {
+          skipLibCheck: true,
+          noResolve: false,
+          moduleResolution: "node",
+          allowSyntheticDefaultImports: true,
+          esModuleInterop: true
+        }
       })
     ],
-    external: ['axios']
+    external: ['axios', 'react', 'vue']
   },
   // Browser entry - ES module
   {
@@ -58,7 +72,7 @@ export default [
         declarationDir: './dist'
       })
     ],
-    external: ['axios']
+    external: ['axios', 'react', 'vue']
   },
   // Browser entry - CommonJS
   {
@@ -73,10 +87,17 @@ export default [
       resolve({ browser: true }),
       commonjs(),
       typescript({
-        tsconfig: './tsconfig.json'
+        tsconfig: './tsconfig.json',
+        compilerOptions: {
+          skipLibCheck: true,
+          noResolve: false,
+          moduleResolution: "node",
+          allowSyntheticDefaultImports: true,
+          esModuleInterop: true
+        }
       })
     ],
-    external: ['axios']
+    external: ['axios', 'react', 'vue']
   },
   // Server entry - ES module
   {
@@ -95,7 +116,7 @@ export default [
         declarationDir: './dist'
       })
     ],
-    external: ['axios', 'express', 'cors', 'stream', 'net']
+    external: ['axios', 'express', 'cors', 'stream', 'net', 'react', 'vue']
   },
   // Server entry - CommonJS
   {
@@ -110,10 +131,17 @@ export default [
       resolve({ preferBuiltins: true }),
       commonjs(),
       typescript({
-        tsconfig: './tsconfig.json'
+        tsconfig: './tsconfig.json',
+        compilerOptions: {
+          skipLibCheck: true,
+          noResolve: false,
+          moduleResolution: "node",
+          allowSyntheticDefaultImports: true,
+          esModuleInterop: true
+        }
       })
     ],
-    external: ['axios', 'express', 'cors', 'stream', 'net']
+    external: ['axios', 'express', 'cors', 'stream', 'net', 'react', 'vue']
   },
   // Legacy server build (for compatibility)
   {
@@ -128,9 +156,104 @@ export default [
       resolve({ preferBuiltins: true }),
       commonjs(),
       typescript({
-        tsconfig: './tsconfig.json'
+        tsconfig: './tsconfig.json',
+        compilerOptions: {
+          skipLibCheck: true,
+          noResolve: false,
+          moduleResolution: "node",
+          allowSyntheticDefaultImports: true,
+          esModuleInterop: true
+        }
       })
     ],
-    external: ['axios', 'express', 'cors', 'stream', 'net']
+    external: ['axios', 'express', 'cors', 'stream', 'net', 'react', 'vue']
+  },
+  // React hooks - ES module
+  {
+    input: 'src/react.ts',
+    output: {
+      file: 'dist/react.esm.js',
+      format: 'es',
+      sourcemap: true
+    },
+    plugins: [
+      resolve({ browser: true }),
+      commonjs(),
+      typescript({
+        tsconfig: './tsconfig.json',
+        declaration: true,
+        declarationDir: './dist'
+      })
+    ],
+    external: ['react', 'axios']
+  },
+  // React hooks - CommonJS
+  {
+    input: 'src/react.ts',
+    output: {
+      file: 'dist/react.cjs',
+      format: 'cjs',
+      sourcemap: true,
+      exports: 'auto'
+    },
+    plugins: [
+      resolve({ browser: true }),
+      commonjs(),
+      typescript({
+        tsconfig: './tsconfig.json',
+        compilerOptions: {
+          skipLibCheck: true,
+          noResolve: false,
+          moduleResolution: "node",
+          allowSyntheticDefaultImports: true,
+          esModuleInterop: true
+        }
+      })
+    ],
+    external: ['react', 'axios']
+  },
+  // Vue composables - ES module
+  {
+    input: 'src/vue.ts',
+    output: {
+      file: 'dist/vue.esm.js',
+      format: 'es',
+      sourcemap: true
+    },
+    plugins: [
+      resolve({ browser: true }),
+      commonjs(),
+      typescript({
+        tsconfig: './tsconfig.json',
+        declaration: true,
+        declarationDir: './dist'
+      })
+    ],
+    external: ['vue', 'axios']
+  },
+  // Vue composables - CommonJS
+  {
+    input: 'src/vue.ts',
+    output: {
+      file: 'dist/vue.cjs',
+      format: 'cjs',
+      sourcemap: true,
+      exports: 'auto'
+    },
+    plugins: [
+      resolve({ browser: true }),
+      commonjs(),
+      typescript({
+        tsconfig: './tsconfig.json',
+        compilerOptions: {
+          skipLibCheck: true,
+          noResolve: false,
+          moduleResolution: "node",
+          allowSyntheticDefaultImports: true,
+          esModuleInterop: true
+        }
+      })
+    ],
+    external: ['vue', 'axios']
   }
 ];

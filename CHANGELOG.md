@@ -2,6 +2,85 @@
 
 All notable changes to Desktop Audio Proxy will be documented in this file.
 
+## [1.1.1] - 2025-07-01
+
+### Quality & Reliability Improvements
+
+#### New Framework Integration Features
+- **React Hooks Support**
+  - `useAudioProxy()` - Complete audio URL processing with loading states
+  - `useAudioCapabilities()` - System codec detection and device enumeration  
+  - `useProxyStatus()` - Real-time proxy server monitoring
+  - `useAudioMetadata()` - Audio file metadata extraction (Tauri/Electron)
+  - `AudioProxyProvider` - Global configuration context provider
+  - Full TypeScript support with comprehensive type definitions
+
+- **Vue Composables Support**
+  - `useAudioProxy()` - Reactive audio URL processing with Vue refs
+  - `useAudioCapabilities()` - Reactive system capabilities detection
+  - `useProxyStatus()` - Reactive proxy server status monitoring
+  - `useAudioMetadata()` - Reactive metadata extraction (Tauri/Electron)
+  - `createAudioProxy()` - Vue plugin for global configuration
+  - Complete Vue 3 Composition API integration
+
+- **Framework Integration Benefits**
+  - One-line audio proxy integration for React/Vue applications
+  - Automatic reactive state management for loading, errors, and data
+  - Built-in retry mechanisms and error handling
+  - Seamless integration with existing React/Vue projects
+  - Optional peer dependencies - no framework lock-in
+  - Comprehensive examples and usage patterns
+
+#### Code Quality Enhancements
+- **Enhanced TypeScript Type Safety**
+  - Eliminated all explicit `any` warnings in core source files
+  - Added comprehensive type declarations for Tauri and Electron APIs
+  - Improved error handling with proper type checking throughout codebase
+  - Added `ElectronAPI` and `TauriAPI` interfaces with full method signatures
+  - Fixed Window interface conflicts between Tauri and Electron declarations
+
+- **Improved Code Consistency**
+  - Fixed all ESLint and Prettier formatting issues
+  - Eliminated unused variable warnings in type declarations
+  - Standardized error handling patterns across all modules
+  - Enhanced code organization and documentation
+
+### Framework Integration Examples
+
+**React Hook Usage:**
+```jsx
+import { useAudioProxy, useAudioCapabilities } from 'desktop-audio-proxy/react';
+
+function AudioPlayer({ url }) {
+  const { audioUrl, isLoading, error, retry } = useAudioProxy(url);
+  const { capabilities } = useAudioCapabilities();
+  
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error} <button onClick={retry}>Retry</button></div>;
+  
+  return <audio controls src={audioUrl} />;
+}
+```
+
+**Vue Composable Usage:**
+```vue
+<script setup>
+import { ref } from 'vue';
+import { useAudioProxy, useAudioCapabilities } from 'desktop-audio-proxy/vue';
+
+const url = ref('https://example.com/audio.mp3');
+const { audioUrl, isLoading, error, retry } = useAudioProxy(url);
+const { capabilities } = useAudioCapabilities();
+</script>
+
+<template>
+  <div v-if="isLoading">Loading...</div>
+  <div v-else-if="error">Error: {{ error }} <button @click="retry">Retry</button></div>
+  <audio v-else controls :src="audioUrl" />
+</template>
+```
+
+
 ## [1.1.0] - 2025-06-30
 
 ### Added
@@ -142,7 +221,3 @@ All notable changes to Desktop Audio Proxy will be documented in this file.
 - Podcast URLs with multiple redirects ✅
 - Radio streaming URLs ✅
 
-### Known Limitations
-- Transcoding features planned for v1.2.0  
-- React/Vue hooks planned for v1.3.0
-- CLI tool planned for v1.4.0

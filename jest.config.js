@@ -1,6 +1,9 @@
 export default {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  testEnvironmentOptions: {
+    url: 'http://localhost:3000'
+  },
   roots: ['<rootDir>/src', '<rootDir>/test'],
   testMatch: [
     '**/__tests__/**/*.ts',

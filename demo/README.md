@@ -19,10 +19,10 @@ A comprehensive web-based demonstration featuring:
 
 ###  How to Run
 ```bash
-# Option 1: Simple HTTP server
-npm run demo:serve
+# Option 1: Full setup with proxy
+npm run demo
 
-# Option 2: Full setup with proxy
+# Option 2: Simple setup with proxy
 npm run demo:simple
 
 # Option 3: Open directly in browser

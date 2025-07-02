@@ -10,10 +10,19 @@
   }
 };
 
-// Mock process for testing
-(global as any).process = {
-  versions: {}
-};
+// Mock process for testing - preserve existing process functions
+if (typeof process === 'undefined') {
+  (global as any).process = {
+    versions: {},
+    cwd: () => '/',
+    uptime: () => 0,
+  };
+} else {
+  // Keep existing process but ensure versions exists
+  if (!process.versions) {
+    (process as any).versions = {};
+  }
+}
 
 // Create a properly typed fetch mock
 const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;

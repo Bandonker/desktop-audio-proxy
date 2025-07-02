@@ -3,13 +3,33 @@ import { AudioProxyClient } from '../client';
 // Mock fetch globally
 const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
 
+// Type for window mock
+interface WindowMock {
+  __TAURI__?: {
+    tauri: {
+      convertFileSrc: jest.MockedFunction<(_filePath: string) => string>;
+    };
+  };
+  electronAPI?: unknown;
+}
+
+// Type for global mock
+interface GlobalMock {
+  window?: WindowMock;
+  process?: {
+    versions?: {
+      electron?: string;
+    };
+  };
+}
+
 describe('AudioProxyClient', () => {
   let client: AudioProxyClient;
 
   beforeEach(() => {
     // Clear mock call history but preserve implementations
     mockFetch.mockClear();
-    
+
     client = new AudioProxyClient({
       proxyUrl: 'http://localhost:3001',
       autoDetect: true,
@@ -26,8 +46,8 @@ describe('AudioProxyClient', () => {
   describe('Environment Detection', () => {
     beforeEach(() => {
       // Clear any existing window properties
-      delete (global as any).window;
-      delete (global as any).process;
+      delete (global as GlobalMock).window;
+      delete (global as GlobalMock).process;
     });
 
     it('should detect unknown environment when window is undefined', () => {
@@ -36,26 +56,28 @@ describe('AudioProxyClient', () => {
     });
 
     it('should detect Tauri environment', () => {
-      (global as any).window = { __TAURI__: {} };
+      (global as GlobalMock).window = {
+        __TAURI__: { tauri: { convertFileSrc: jest.fn() } },
+      };
       const testClient = new AudioProxyClient();
       expect(testClient.getEnvironment()).toBe('tauri');
     });
 
     it('should detect Electron environment via electronAPI', () => {
-      (global as any).window = { electronAPI: {} };
+      (global as GlobalMock).window = { electronAPI: {} };
       const testClient = new AudioProxyClient();
       expect(testClient.getEnvironment()).toBe('electron');
     });
 
     it('should detect Electron environment via process.versions', () => {
-      (global as any).window = {};
-      (global as any).process = { versions: { electron: '25.0.0' } };
+      (global as GlobalMock).window = {};
+      (global as GlobalMock).process = { versions: { electron: '25.0.0' } };
       const testClient = new AudioProxyClient();
       expect(testClient.getEnvironment()).toBe('electron');
     });
 
     it('should detect web environment as fallback', () => {
-      (global as any).window = {};
+      (global as GlobalMock).window = {};
       const testClient = new AudioProxyClient();
       expect(testClient.getEnvironment()).toBe('web');
     });
@@ -100,7 +122,7 @@ describe('AudioProxyClient', () => {
 
   describe('URL Processing', () => {
     beforeEach(() => {
-      (global as any).window = {};
+      (global as GlobalMock).window = {};
     });
 
     it('should return original URL when proxy is not available', async () => {
@@ -254,7 +276,7 @@ describe('AudioProxyClient', () => {
 
   describe('URL Validation', () => {
     beforeEach(() => {
-      (global as any).window = {};
+      (global as GlobalMock).window = {};
     });
 
     it('should handle URL validation through canPlayUrl', async () => {

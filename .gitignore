@@ -1,5 +1,8 @@
 # Dependencies
 node_modules/
+# Except stub types for build
+!node_modules/@types/react/
+!node_modules/@types/vue/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -63,3 +66,9 @@ temp/
 *.njsproj
 *.sln
 *.sw?
+# Marketing and development files
+advertandthingstodo.md
+discord-engagement-plan.md
+github-responses-ready-to-post.md
+phase1-response-templates.md
+CLAUDE.md

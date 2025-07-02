@@ -1,6 +1,32 @@
 import { AudioProxyClient } from './client';
 import { AudioServiceOptions } from './types';
 
+// Type declarations for Electron API
+interface ElectronAPI {
+  getSystemAudioInfo?: () => Promise<{
+    supportedFormats?: string[];
+    systemInfo?: string;
+  }>;
+  getAudioMetadata?: (_filePath: string) => Promise<{
+    duration?: number;
+    bitrate?: number;
+    sampleRate?: number;
+    channels?: number;
+    format?: string;
+  }>;
+  getAudioDevices?: () => Promise<{
+    inputDevices: Array<{ id: string; name: string }>;
+    outputDevices: Array<{ id: string; name: string }>;
+  }>;
+  getSystemAudioSettings?: () => Promise<{
+    defaultInputDevice?: string;
+    defaultOutputDevice?: string;
+    masterVolume?: number;
+  }>;
+}
+
+// Extend the existing Window interface from client.ts - don't redeclare electronAPI
+
 export class ElectronAudioService {
   private audioClient: AudioProxyClient;
 
@@ -103,11 +129,10 @@ export class ElectronAudioService {
         }
 
         // Integrate with Electron main process for system codec detection
-        if ((window as any).electronAPI?.getSystemAudioInfo) {
+        const electronAPI = window.electronAPI as ElectronAPI | undefined;
+        if (electronAPI?.getSystemAudioInfo) {
           try {
-            const systemAudioInfo = await (
-              window as any
-            ).electronAPI.getSystemAudioInfo();
+            const systemAudioInfo = await electronAPI.getSystemAudioInfo();
             if (systemAudioInfo) {
               capabilities['electron_system_info'] =
                 JSON.stringify(systemAudioInfo);
@@ -152,15 +177,16 @@ export class ElectronAudioService {
     channels?: number;
     format?: string;
   } | null> {
+    const electronAPI = window.electronAPI as ElectronAPI | undefined;
     if (
       this.getEnvironment() !== 'electron' ||
-      !(window as any).electronAPI?.getAudioMetadata
+      !electronAPI?.getAudioMetadata
     ) {
       return null;
     }
 
     try {
-      return await (window as any).electronAPI.getAudioMetadata(filePath);
+      return await electronAPI.getAudioMetadata(filePath);
     } catch (error) {
       console.warn(
         '[ElectronAudioService] Failed to get audio metadata:',
@@ -175,15 +201,13 @@ export class ElectronAudioService {
     inputDevices: Array<{ id: string; name: string }>;
     outputDevices: Array<{ id: string; name: string }>;
   } | null> {
-    if (
-      this.getEnvironment() !== 'electron' ||
-      !(window as any).electronAPI?.getAudioDevices
-    ) {
+    const electronAPI = window.electronAPI as ElectronAPI | undefined;
+    if (this.getEnvironment() !== 'electron' || !electronAPI?.getAudioDevices) {
       return null;
     }
 
     try {
-      return await (window as any).electronAPI.getAudioDevices();
+      return await electronAPI.getAudioDevices();
     } catch (error) {
       console.warn(
         '[ElectronAudioService] Failed to get audio devices:',
@@ -199,15 +223,16 @@ export class ElectronAudioService {
     defaultOutputDevice?: string;
     masterVolume?: number;
   } | null> {
+    const electronAPI = window.electronAPI as ElectronAPI | undefined;
     if (
       this.getEnvironment() !== 'electron' ||
-      !(window as any).electronAPI?.getSystemAudioSettings
+      !electronAPI?.getSystemAudioSettings
     ) {
       return null;
     }
 
     try {
-      return await (window as any).electronAPI.getSystemAudioSettings();
+      return await electronAPI.getSystemAudioSettings();
     } catch (error) {
       console.warn(
         '[ElectronAudioService] Failed to get system audio settings:',

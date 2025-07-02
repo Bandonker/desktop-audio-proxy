@@ -40,6 +40,7 @@
 ## Features
 
 - **CORS Bypass** - Play external audio URLs without CORS restrictions
+- **React/Vue Integration** - Ready-to-use hooks and composables for seamless framework integration
 - **Enhanced Codec Detection** - Comprehensive format testing with real-time capabilities mapping 
 - **Audio Metadata Extraction** - Get duration, format, bitrate from audio files 
 - **Audio Device Enumeration** - List and manage available audio devices 
@@ -305,6 +306,76 @@ const audioClient = createAudioClient({
 });
 ```
 
+## Framework Integration
+
+### React Hooks
+
+Seamless React integration with automatic state management:
+
+```jsx
+import { useAudioProxy, useAudioCapabilities } from 'desktop-audio-proxy/react';
+
+function AudioPlayer({ url }) {
+  const { audioUrl, isLoading, error, retry } = useAudioProxy(url);
+  const { capabilities } = useAudioCapabilities();
+  
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error} <button onClick={retry}>Retry</button></div>;
+  
+  return <audio controls src={audioUrl} />;
+}
+
+// Advanced usage with provider
+import { AudioProxyProvider } from 'desktop-audio-proxy/react';
+
+function App() {
+  return (
+    <AudioProxyProvider options={{ 
+      proxyUrl: 'http://localhost:3002',
+      retryAttempts: 3 
+    }}>
+      <AudioPlayer url="https://example.com/audio.mp3" />
+    </AudioProxyProvider>
+  );
+}
+```
+
+**Available React Hooks:**
+- `useAudioProxy(url)` - Complete audio URL processing with loading states
+- `useAudioCapabilities()` - System codec detection and device enumeration  
+- `useProxyStatus()` - Real-time proxy server monitoring
+- `useAudioMetadata(filePath)` - Audio file metadata extraction (Tauri/Electron)
+
+### Vue Composables
+
+Modern Vue 3 Composition API integration:
+
+```vue
+<script setup>
+import { ref } from 'vue';
+import { useAudioProxy, useAudioCapabilities } from 'desktop-audio-proxy/vue';
+
+const url = ref('https://example.com/audio.mp3');
+const { audioUrl, isLoading, error, retry } = useAudioProxy(url);
+const { capabilities } = useAudioCapabilities();
+</script>
+
+<template>
+  <div v-if="isLoading">Loading...</div>
+  <div v-else-if="error">
+    Error: {{ error }} 
+    <button @click="retry">Retry</button>
+  </div>
+  <audio v-else controls :src="audioUrl" />
+</template>
+```
+
+**Available Vue Composables:**
+- `useAudioProxy(url)` - Reactive audio URL processing with Vue refs
+- `useAudioCapabilities()` - Reactive system capabilities detection
+- `useProxyStatus()` - Reactive proxy server status monitoring
+- `useAudioMetadata(filePath)` - Reactive metadata extraction (Tauri/Electron)
+
 ## API Reference
 
 ### AudioProxyClient
@@ -497,8 +568,14 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // v1.1.0: Enhanced debugging with feature detection
-if (audioClient.checkCodecSupport) {
-  const codecInfo = await audioClient.checkCodecSupport();
+const environment = audioClient.getEnvironment();
+if (environment === 'tauri') {
+  const service = new TauriAudioService();
+  const codecInfo = await service.checkSystemCodecs();
+  console.log('Supported codecs:', codecInfo);
+} else if (environment === 'electron') {
+  const service = new ElectronAudioService();
+  const codecInfo = await service.checkSystemCodecs();
   console.log('Supported codecs:', codecInfo);
 }
 ```

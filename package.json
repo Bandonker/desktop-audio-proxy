@@ -1,6 +1,6 @@
 {
   "name": "desktop-audio-proxy",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A comprehensive audio streaming solution for Tauri and Electron apps that bypasses CORS and WebKit codec issues",
   "main": "dist/index.cjs",
   "module": "dist/index.esm.js",
@@ -21,6 +21,16 @@
       "import": "./dist/server.esm.js",
       "require": "./dist/server.cjs",
       "types": "./dist/server.d.ts"
+    },
+    "./react": {
+      "import": "./dist/react.esm.js",
+      "require": "./dist/react.cjs",
+      "types": "./dist/react.d.ts"
+    },
+    "./vue": {
+      "import": "./dist/vue.esm.js",
+      "require": "./dist/vue.cjs",
+      "types": "./dist/vue.d.ts"
     }
   },
   "scripts": {
@@ -37,7 +47,7 @@
     "example": "npm run build && npm run proxy:start",
     "demo": "node demo/start-demo.js",
     "demo:cli": "node demo/cli-demo.js",
-    "demo:serve": "cd demo && python -m http.server 8080",
+    "demo:serve": "cd demo && python3 -m http.server 8080",
     "demo:simple": "npm run build && npm run proxy:start"
   },
   "keywords": [
@@ -49,10 +59,30 @@
     "streaming",
     "webkit",
     "media",
+    "react",
+    "vue",
+    "hooks",
+    "composables",
+    "typescript",
     "bandonker",
     "desktop-audio",
     "audio-proxy",
-    "cors-bypass"
+    "cors-bypass",
+    "tauri-cors",
+    "electron-audio",
+    "tauri-audio",
+    "electron-cors",
+    "desktop-streaming",
+    "webkit-codec",
+    "audio-streaming",
+    "cors-workaround",
+    "podcast-streaming",
+    "radio-streaming",
+    "web-audio-api",
+    "desktop-media",
+    "cross-origin",
+    "tauri-streaming",
+    "electron-streaming"
   ],
   "author": {
     "name": "Bandonker",
@@ -68,7 +98,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bandonker/desktop-audio-proxy"
+    "url": "git+https://github.com/bandonker/desktop-audio-proxy.git"
   },
   "homepage": "https://github.com/bandonker/desktop-audio-proxy#readme",
   "bugs": {
@@ -88,6 +118,18 @@
     "axios": "^1.6.0",
     "cors": "^2.8.5",
     "express": "^4.18.2"
+  },
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "vue": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
