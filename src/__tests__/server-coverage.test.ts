@@ -26,7 +26,7 @@ describe('AudioProxyServer - Coverage Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.data).toHaveProperty('status', 'ok');
-      expect(response.data).toHaveProperty('version', '1.1.1');
+      expect(response.data).toHaveProperty('version', '1.1.5');
       expect(response.data).toHaveProperty('uptime');
       expect(response.data.config).toHaveProperty('port');
       expect(response.data.config).toHaveProperty('enableTranscoding', false);

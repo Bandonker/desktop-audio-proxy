@@ -108,7 +108,7 @@ export class AudioProxyServer {
     this.app.get('/health', (_req: Request, res: Response) => {
       res.json({
         status: 'ok',
-        version: '1.1.4',
+        version: '1.1.5',
         uptime: process.uptime(),
         config: {
           port: this.actualPort || this.config.port,

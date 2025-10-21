@@ -1,13 +1,11 @@
 # Changelog
 
+## [1.1.6] - 2025-10-21
+
+### Fixed
+- Added 'proxy_check' to TelemetryEvent type union (fixes TypeScript compilation errors)
+
 ## [1.1.5] - 2025-10-21
-
-### Added
-- SECURITY.md and TAURI_MIGRATION.md now included in npm package
-- Documentation references added to README
-
-### Changed
-- Updated README with demo:serve command documentation
 
 ## [1.1.4] - 2025-10-21
 

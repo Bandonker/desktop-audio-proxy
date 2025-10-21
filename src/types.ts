@@ -19,7 +19,7 @@ export interface TelemetryOptions {
 }
 
 export interface TelemetryEvent {
-  type: 'proxy_start' | 'proxy_stop' | 'url_conversion' | 'error' | 'performance';
+  type: 'proxy_start' | 'proxy_stop' | 'proxy_check' | 'url_conversion' | 'error' | 'performance';
   timestamp: number;
   data?: Record<string, unknown>;
 }
