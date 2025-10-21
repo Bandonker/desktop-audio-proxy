@@ -865,11 +865,11 @@ src/
 ### CI/CD Pipeline
 
 This project uses GitHub Actions for:
-- ✅ Automated testing on Node.js 14, 16, 18, 20
-- ✅ Code coverage reporting with Codecov
-- ✅ ESLint and Prettier checks
-- ✅ Build verification for all entry points
-- ✅ Automated npm publishing on releases
+-  Automated testing on Node.js 14, 16, 18, 20
+-  Code coverage reporting with Codecov
+-  ESLint and Prettier checks
+-  Build verification for all entry points
+-  Automated npm publishing on releases
 
 ## License
 
