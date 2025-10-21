@@ -157,10 +157,11 @@ import { startProxyServer, AudioProxyServer } from 'desktop-audio-proxy/server';
 **See Desktop Audio Proxy in action!** Our comprehensive demo provides real-time testing with automatic library detection:
 
 ```bash
-npm run demo
+npm run demo        # Start demo with auto-server
+npm run demo:serve  # Serve demo on http://localhost:8080
 ```
 
-**v1.1.3 Demo Features:**
+**Demo Features:**
 -  **Auto-Detection** - Automatically finds and loads available library builds (local, CDN, various formats)
 -  **Version Detection** - Shows current library version with upgrade recommendations
 -  **Enhanced Features Showcase** - Live codec detection, metadata extraction, device enumeration
@@ -884,6 +885,11 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - [Tauri](https://tauri.app) - Build smaller, faster, and more secure desktop applications
 - [Electron](https://www.electronjs.org) - Build cross-platform desktop apps with web technologies
+
+## Additional Documentation
+
+- [SECURITY.md](SECURITY.md) - Security best practices and vulnerability reporting
+- [TAURI_MIGRATION.md](TAURI_MIGRATION.md) - Guide for migrating from Tauri v1 to v2
 
 ## Support
 
