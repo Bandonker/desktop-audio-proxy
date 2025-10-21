@@ -2,12 +2,13 @@ import { AudioProxyClient } from './client';
 import { AudioServiceOptions } from './types';
 
 // Type declarations for Electron API
+/* eslint-disable no-unused-vars */
 interface ElectronAPI {
   getSystemAudioInfo?: () => Promise<{
     supportedFormats?: string[];
     systemInfo?: string;
   }>;
-  getAudioMetadata?: (_filePath: string) => Promise<{
+  getAudioMetadata?: (filePath: string) => Promise<{
     duration?: number;
     bitrate?: number;
     sampleRate?: number;
@@ -24,6 +25,7 @@ interface ElectronAPI {
     masterVolume?: number;
   }>;
 }
+/* eslint-enable no-unused-vars */
 
 // Extend the existing Window interface from client.ts - don't redeclare electronAPI
 

@@ -1,6 +1,14 @@
 import typescript from '@rollup/plugin-typescript';
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
+import json from '@rollup/plugin-json';
+
+// Node.js built-in modules that should be external for browser builds
+const nodeBuiltins = [
+  'events', 'fs', 'stream', 'zlib', 'buffer', 'string_decoder', 'path',
+  'querystring', 'url', 'http', 'https', 'crypto', 'util', 'net', 'tls',
+  'os', 'assert', 'constants', 'timers', 'process'
+];
 
 export default [
   // Main entry - Browser-safe ES module build
@@ -9,11 +17,13 @@ export default [
     output: {
       file: 'dist/index.esm.js',
       format: 'es',
-      sourcemap: true
+      sourcemap: true,
+      inlineDynamicImports: true
     },
     plugins: [
       resolve({ browser: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         declaration: true,
@@ -37,11 +47,13 @@ export default [
       file: 'dist/index.cjs',
       format: 'cjs',
       sourcemap: true,
-      exports: 'auto'
+      exports: 'auto',
+      inlineDynamicImports: true
     },
     plugins: [
       resolve({ browser: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         compilerOptions: {
@@ -61,18 +73,32 @@ export default [
     output: {
       file: 'dist/browser.esm.js',
       format: 'es',
-      sourcemap: true
+      sourcemap: true,
+      inlineDynamicImports: true
     },
     plugins: [
-      resolve({ browser: true }),
-      commonjs(),
+      resolve({
+        browser: true,
+        preferBuiltins: false
+      }),
+      commonjs({
+        ignore: ['axios'] // Don't process axios with commonjs plugin
+      }),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         declaration: true,
         declarationDir: './dist'
       })
     ],
-    external: ['axios', 'react', 'vue']
+    external: (id) => {
+      // External: axios, React, Vue, server-impl, and all Node.js built-ins
+      if (id === 'axios' || id === 'react' || id === 'vue') return true;
+      if (id.includes('server-impl')) return true; // Don't bundle server code in browser builds
+      if (nodeBuiltins.includes(id)) return true;
+      // Also external if it's a subpath of a built-in (like 'stream/web')
+      return nodeBuiltins.some(builtin => id === builtin || id.startsWith(builtin + '/'));
+    }
   },
   // Browser entry - CommonJS
   {
@@ -81,11 +107,13 @@ export default [
       file: 'dist/browser.cjs',
       format: 'cjs',
       sourcemap: true,
-      exports: 'auto'
+      exports: 'auto',
+      inlineDynamicImports: true
     },
     plugins: [
       resolve({ browser: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         compilerOptions: {
@@ -97,7 +125,7 @@ export default [
         }
       })
     ],
-    external: ['axios', 'react', 'vue']
+    external: ['axios', 'react', 'vue', ...nodeBuiltins]
   },
   // Server entry - ES module
   {
@@ -110,6 +138,7 @@ export default [
     plugins: [
       resolve({ preferBuiltins: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         declaration: true,
@@ -130,6 +159,7 @@ export default [
     plugins: [
       resolve({ preferBuiltins: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         compilerOptions: {
@@ -155,6 +185,7 @@ export default [
     plugins: [
       resolve({ preferBuiltins: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         compilerOptions: {
@@ -174,11 +205,13 @@ export default [
     output: {
       file: 'dist/react.esm.js',
       format: 'es',
-      sourcemap: true
+      sourcemap: true,
+      inlineDynamicImports: true
     },
     plugins: [
       resolve({ browser: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         declaration: true,
@@ -194,11 +227,13 @@ export default [
       file: 'dist/react.cjs',
       format: 'cjs',
       sourcemap: true,
-      exports: 'auto'
+      exports: 'auto',
+      inlineDynamicImports: true
     },
     plugins: [
       resolve({ browser: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         compilerOptions: {
@@ -218,11 +253,13 @@ export default [
     output: {
       file: 'dist/vue.esm.js',
       format: 'es',
-      sourcemap: true
+      sourcemap: true,
+      inlineDynamicImports: true
     },
     plugins: [
       resolve({ browser: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         declaration: true,
@@ -238,11 +275,13 @@ export default [
       file: 'dist/vue.cjs',
       format: 'cjs',
       sourcemap: true,
-      exports: 'auto'
+      exports: 'auto',
+      inlineDynamicImports: true
     },
     plugins: [
       resolve({ browser: true }),
       commonjs(),
+      json(),
       typescript({
         tsconfig: './tsconfig.json',
         compilerOptions: {

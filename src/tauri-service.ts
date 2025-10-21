@@ -87,9 +87,15 @@ export class TauriAudioService {
     }
 
     // Check for additional Tauri-specific audio capabilities if available
-    if (this.getEnvironment() === 'tauri' && window.__TAURI__?.tauri?.invoke) {
+    if (this.getEnvironment() === 'tauri' && window.__TAURI__) {
       try {
-        const { invoke } = window.__TAURI__.tauri;
+        // Try Tauri v2 API first, fallback to v1
+        const invoke =
+          window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke;
+
+        if (!invoke) {
+          throw new Error('Tauri invoke not available');
+        }
 
         // Try to get system audio info from Tauri backend
         const systemAudioInfo = await invoke('get_system_audio_info').catch(
@@ -132,12 +138,19 @@ export class TauriAudioService {
     channels?: number;
     format?: string;
   } | null> {
-    if (this.getEnvironment() !== 'tauri' || !window.__TAURI__?.tauri?.invoke) {
+    if (this.getEnvironment() !== 'tauri' || !window.__TAURI__) {
       return null;
     }
 
     try {
-      const { invoke } = window.__TAURI__.tauri;
+      // Try Tauri v2 API first, fallback to v1
+      const invoke =
+        window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke;
+
+      if (!invoke) {
+        throw new Error('Tauri invoke not available');
+      }
+
       const result = await invoke('get_audio_metadata', { path: filePath });
       return result as {
         duration?: number;
@@ -157,12 +170,19 @@ export class TauriAudioService {
     inputDevices: Array<{ id: string; name: string }>;
     outputDevices: Array<{ id: string; name: string }>;
   } | null> {
-    if (this.getEnvironment() !== 'tauri' || !window.__TAURI__?.tauri?.invoke) {
+    if (this.getEnvironment() !== 'tauri' || !window.__TAURI__) {
       return null;
     }
 
     try {
-      const { invoke } = window.__TAURI__.tauri;
+      // Try Tauri v2 API first, fallback to v1
+      const invoke =
+        window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke;
+
+      if (!invoke) {
+        throw new Error('Tauri invoke not available');
+      }
+
       const result = await invoke('get_audio_devices');
       return result as {
         inputDevices: Array<{ id: string; name: string }>;

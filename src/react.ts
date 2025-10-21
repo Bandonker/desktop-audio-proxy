@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   AudioProxyClient,
   TauriAudioService,
@@ -15,8 +15,20 @@ export function useAudioProxy(url: string | null, options?: AudioProxyOptions) {
   const [error, setError] = useState<string | null>(null);
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
 
+  // Memoize options with deep comparison to prevent unnecessary client recreations
+  const optionsRef = useRef(options);
+  const optionsJson = JSON.stringify(options);
+  const stableOptions = useMemo(() => {
+    const newOptions = JSON.parse(optionsJson);
+    optionsRef.current = newOptions;
+    return newOptions;
+  }, [optionsJson]);
+
   // Memoize client to prevent unnecessary recreations
-  const client = useMemo(() => new AudioProxyClient(options), [options]);
+  const client = useMemo(
+    () => new AudioProxyClient(stableOptions),
+    [stableOptions]
+  );
 
   const processUrl = useCallback(
     async (inputUrl: string) => {

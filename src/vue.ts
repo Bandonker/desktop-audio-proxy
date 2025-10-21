@@ -1,11 +1,11 @@
 import {
   ref,
-  computed,
   watch,
   onMounted,
   inject,
+  readonly,
   type Ref,
-  type ComputedRef,
+  type App,
 } from 'vue';
 import {
   AudioProxyClient,
@@ -217,8 +217,7 @@ export function useProxyStatus(options?: AudioProxyOptions) {
     try {
       const available = await client.isProxyAvailable();
       isAvailable.value = available;
-      proxyUrl.value =
-        (client as any).options?.proxyUrl || 'http://localhost:3002';
+      proxyUrl.value = client.getProxyUrl();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       error.value = errorMessage;
@@ -311,13 +310,6 @@ export function useAudioMetadata(filePath: Ref<string | null> | string | null) {
 }
 
 /**
- * Helper function to create readonly refs
- */
-function readonly<T>(ref: Ref<T>): ComputedRef<T> {
-  return computed(() => ref.value);
-}
-
-/**
  * Vue plugin for global audio proxy configuration
  */
 export interface AudioProxyGlobalOptions {
@@ -326,7 +318,7 @@ export interface AudioProxyGlobalOptions {
 
 export function createAudioProxy(globalOptions: AudioProxyGlobalOptions = {}) {
   return {
-    install(app: any) {
+    install(app: App) {
       const client = new AudioProxyClient(globalOptions.defaultOptions);
 
       app.config.globalProperties.$audioProxy = client;

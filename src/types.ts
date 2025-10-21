@@ -11,13 +11,28 @@ export interface ProxyConfig {
   cacheTTL?: number;
 }
 
+export interface TelemetryOptions {
+  enabled?: boolean; // Enable telemetry tracking
+  onEvent?: (event: TelemetryEvent) => void; // Custom event handler
+  trackPerformance?: boolean; // Track performance metrics
+  trackErrors?: boolean; // Track errors
+}
+
+export interface TelemetryEvent {
+  type: 'proxy_start' | 'proxy_stop' | 'url_conversion' | 'error' | 'performance';
+  timestamp: number;
+  data?: Record<string, unknown>;
+}
+
 export interface AudioProxyOptions {
   proxyUrl?: string;
   autoDetect?: boolean;
   fallbackToOriginal?: boolean;
   retryAttempts?: number;
   retryDelay?: number;
-  proxyConfig?: ProxyConfig;
+  autoStartProxy?: boolean; // Automatically start proxy server if not available (Node.js only)
+  proxyServerConfig?: ProxyConfig; // Configuration for auto-started proxy server
+  telemetry?: TelemetryOptions; // Optional telemetry for debugging and analytics
 }
 
 export interface StreamInfo {

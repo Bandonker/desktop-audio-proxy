@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desktop Audio Proxy - Telemetry Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles-bandonker-signature.css">
+    <link rel="icon" href="../assets/logo.png" type="image/png">
+    <style>
+        /* Dashboard-specific overrides */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .signature-card h2 {
+            font-size: 1.3em;
+            margin-bottom: 16px;
+            color: var(--accent-primary);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .stat-item {
+            background: var(--card-bg);
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent-primary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .log-entry {
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 0.9em;
+            border-left: 4px solid;
+            color: var(--text-primary);
+        }
+
+        .log-debug { background: #e3f2fd; border-color: #2196F3; color: #0d47a1; }
+        .log-info { background: #e8f5e9; border-color: #4CAF50; color: #1b5e20; }
+        .log-warn { background: #fff3e0; border-color: #FF9800; color: #e65100; }
+        .log-error { background: #ffebee; border-color: #f44336; color: #b71c1c; }
+
+        .log-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        button {
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: var(--accent-primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        select, input[type="text"], input[type="url"], input[type="number"] {
+            padding: 10px;
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1em;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            background: white;
+            color: #1a1a1a;
+            font-family: 'Inter', sans-serif;
+        }
+
+        select:focus, input[type="text"]:focus, input[type="url"]:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        input[type="checkbox"] {
+            margin-right: 8px;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        label {
+            color: var(--text-primary);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .chart-container {
+            height: 300px;
+            position: relative;
+        }
+
+        .timeline-entry {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            margin-bottom: 4px;
+            background: var(--card-bg);
+            border-radius: 4px;
+            border-left: 2px solid var(--border-color);
+        }
+
+        .timeline-time {
+            font-size: 0.8em;
+            color: var(--text-secondary);
+            margin-right: 12px;
+            min-width: 80px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .timeline-event {
+            flex: 1;
+            color: var(--text-primary);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .badge-proxy { background: var(--accent-primary); color: white; }
+        .badge-client { background: var(--accent-success); color: white; }
+        .badge-network { background: #FF9800; color: white; }
+        .badge-perf { background: #9C27B0; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-title">
+                <img src="../assets/logo.png" alt="DAP Logo" class="logo">
+                <h1>Desktop Audio Proxy - Telemetry Dashboard</h1>
+            </div>
+            <p class="subtitle">Real-time monitoring, debugging, and interactive playground</p>
+            <div style="background: rgba(33,150,243,0.2); border: 2px solid #2196F3; border-radius: 8px; padding: 16px; margin-top: 15px;">
+                <p style="color: white; font-weight: 600; margin: 0 0 8px 0; font-size: 0.95em;">Setup Instructions:</p>
+                <div style="text-align: left; color: white; font-size: 0.85em; line-height: 1.6;">
+                    <p style="margin: 4px 0;"><strong>1. Start proxy server:</strong> <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">npm run proxy:start</code></p>
+                    <p style="margin: 4px 0;"><strong>2. Start demo server:</strong> <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">npm run demo:serve</code></p>
+                    <p style="margin: 4px 0;"><strong>3. Open browser:</strong> <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">http://localhost:8080/demo/telemetry-dashboard.html</code></p>
+                </div>
+            </div>
+            <div class="nav-links" style="text-align: center; margin-top: 15px;">
+                <a href="index.html" style="color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.2); border-radius: 6px; margin: 0 8px; transition: background 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">← Back to Main Demo</a>
+            </div>
+        </header>
+
+        <div class="signature-card controls" style="margin-top: 30px;">
+            <h2 style="margin-bottom: 16px;">Controls</h2>
+            <button onclick="startTelemetry()">▶️ Start Telemetry</button>
+            <button onclick="stopTelemetry()">⏸️ Pause</button>
+            <button onclick="clearLogs()">🗑️ Clear Logs</button>
+            <button onclick="exportData()">💾 Export Data</button>
+
+            <br><br>
+
+            <label>Log Level:</label>
+            <select id="logLevel" onchange="updateLogLevel()">
+                <option value="debug">Debug</option>
+                <option value="info" selected>Info</option>
+                <option value="warn">Warn</option>
+                <option value="error">Error</option>
+            </select>
+
+            <label>Test URL:</label>
+            <input type="text" id="testUrl" value="https://www2.cs.uic.edu/~i101/SoundFiles/StarWars60.wav" style="width: 400px;">
+            <button onclick="testUrl()">🧪 Test URL</button>
+        </div>
+
+        <div class="dashboard">
+            <div class="signature-card">
+                <h2>📊 Statistics</h2>
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-label">Total Events</div>
+                        <div class="stat-value" id="totalEvents">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Errors</div>
+                        <div class="stat-value" id="errorCount">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Avg Response</div>
+                        <div class="stat-value" id="avgResponse">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Success Rate</div>
+                        <div class="stat-value" id="successRate">100%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="signature-card">
+                <h2>⚡ Performance Metrics</h2>
+                <div id="performanceMetrics"></div>
+            </div>
+
+            <div class="signature-card">
+                <h2>📈 Event Timeline</h2>
+                <div class="log-container" id="timeline"></div>
+            </div>
+
+            <div class="signature-card">
+                <h2>🔍 Debug Logs</h2>
+                <div class="log-container" id="logs"></div>
+            </div>
+        </div>
+
+        <div class="signature-card">
+            <h2>📝 Event Details</h2>
+            <div style="max-height: 300px; overflow-y: auto;">
+                <pre id="eventDetails" style="font-size: 0.85em; background: var(--card-bg); padding: 12px; border-radius: 6px; color: var(--text-primary); border: 1px solid var(--border-color);">No events yet. Start telemetry and test a URL to see details.</pre>
+            </div>
+        </div>
+
+        <div class="signature-card">
+            <h2>🎮 Interactive Playground</h2>
+            <p style="margin-bottom: 16px; color: var(--text-secondary);">Test different configurations and see how they affect behavior</p>
+
+            <div style="background: var(--card-bg); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid var(--border-color);">
+                <h3 style="margin-bottom: 12px; font-size: 1.1em; color: var(--text-primary);">Configuration</h3>
+
+                <label style="display: block; margin-bottom: 8px;">
+                    <input type="checkbox" id="autoStart" onchange="updatePlaygroundConfig()">
+                    Auto-start proxy server
+                </label>
+
+                <label style="display: block; margin-bottom: 8px;">
+                    <input type="checkbox" id="fallback" checked onchange="updatePlaygroundConfig()">
+                    Enable fallback to original URL
+                </label>
+
+                <label style="display: block; margin-bottom: 16px;">
+                    Retry attempts:
+                    <input type="number" id="retryAttempts" value="3" min="1" max="10" style="width: 60px;" onchange="updatePlaygroundConfig()">
+                </label>
+
+                <button onclick="applyPlaygroundConfig()">Apply Configuration</button>
+            </div>
+
+            <div style="background: var(--card-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <h3 style="margin-bottom: 12px; font-size: 1.1em; color: var(--text-primary);">Code Generator</h3>
+                <p style="margin-bottom: 8px; font-size: 0.9em; color: var(--text-secondary);">Select framework:</p>
+
+                <select id="framework" onchange="generateCode()" style="width: 200px; margin-bottom: 12px;">
+                    <option value="vanilla">Vanilla JS</option>
+                    <option value="react">React</option>
+                    <option value="vue">Vue</option>
+                    <option value="tauri">Tauri</option>
+                    <option value="electron">Electron</option>
+                </select>
+
+                <button onclick="copyCode()">📋 Copy Code</button>
+
+                <pre id="generatedCode" style="margin-top: 12px; background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 0.85em; font-family: 'JetBrains Mono', 'Courier New', monospace; border: 1px solid #333;">// Select a framework to see example code</pre>
+            </div>
+        </div>
+
+        <div class="signature-card">
+            <h2>📊 Visual Flow Diagram</h2>
+            <div style="text-align: center; padding: 20px;">
+                <div style="display: inline-block; text-align: left;">
+                    <div style="padding: 16px; background: #e3f2fd; border-radius: 8px; margin-bottom: 16px; border-left: 4px solid #2196F3;">
+                        <strong style="color: #0d47a1;">1. URL Request</strong><br>
+                        <span style="font-size: 0.9em; color: #1565c0;">Client requests audio URL</span>
+                    </div>
+                    <div style="text-align: center; margin: 8px 0; color: var(--text-secondary);">↓</div>
+                    <div style="padding: 16px; background: #e8f5e9; border-radius: 8px; margin-bottom: 16px; border-left: 4px solid #4CAF50;">
+                        <strong style="color: #1b5e20;">2. Environment Detection</strong><br>
+                        <span style="font-size: 0.9em; color: #2e7d32;">Tauri / Electron / Web</span>
+                    </div>
+                    <div style="text-align: center; margin: 8px 0; color: var(--text-secondary);">↓</div>
+                    <div style="padding: 16px; background: #fff3e0; border-radius: 8px; margin-bottom: 16px; border-left: 4px solid #FF9800;">
+                        <strong style="color: #e65100;">3. Proxy Check</strong><br>
+                        <span style="font-size: 0.9em; color: #f57c00;">Is proxy server available?</span>
+                    </div>
+                    <div style="text-align: center; margin: 8px 0; color: var(--text-secondary);">↓</div>
+                    <div style="padding: 16px; background: #f3e5f5; border-radius: 8px; border-left: 4px solid #9C27B0;">
+                        <strong style="color: #6a1b9a;">4. URL Conversion</strong><br>
+                        <span style="font-size: 0.9em; color: #7b1fa2;">Convert to playable URL</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Provide Node.js globals for browser
+        window.process = { env: {}, browser: true, version: '', versions: {} };
+        window.global = window;
+    </script>
+    <script type="importmap">
+    {
+        "imports": {
+            "axios": "https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/esm/axios.min.js",
+            "events": "data:text/javascript,export default class EventEmitter {}",
+            "fs": "data:text/javascript,export default {}",
+            "stream": "data:text/javascript,export default {}",
+            "zlib": "data:text/javascript,export default {}",
+            "buffer": "data:text/javascript,export class Buffer extends Uint8Array { static from() { return new Uint8Array(); } static alloc() { return new Uint8Array(); } static isBuffer() { return false; } }; export default { Buffer }",
+            "string_decoder": "data:text/javascript,export default {}",
+            "path": "data:text/javascript,export default {}",
+            "querystring": "data:text/javascript,export default {}",
+            "url": "data:text/javascript,export default {}",
+            "http": "data:text/javascript,export default {}",
+            "https": "data:text/javascript,export default {}",
+            "crypto": "data:text/javascript,export default {}",
+            "util": "data:text/javascript,export function inherits(ctor, superCtor) { if (superCtor && superCtor.prototype) { ctor.prototype = Object.create(superCtor.prototype); ctor.prototype.constructor = ctor; } }; export default { inherits }",
+            "net": "data:text/javascript,export function createServer() {}; export default {}",
+            "tls": "data:text/javascript,export default {}"
+        }
+    }
+    </script>
+    <script type="module">
+        // Check if we can load modules (requires HTTP server)
+        let createAudioClient, enableDebug, getDebugger;
+
+        (async () => {
+            try {
+                // Use local build with axios from CDN via import map
+                const module = await import('../dist/browser.esm.js');
+                createAudioClient = module.createAudioClient;
+                enableDebug = module.enableDebug;
+                getDebugger = module.getDebugger;
+
+                console.log('✅ Module loaded successfully!', { createAudioClient, enableDebug, getDebugger });
+
+                // Module loaded successfully, initialize the rest
+                initializeDashboard();
+                console.log('✅ Dashboard initialized!');
+            } catch (error) {
+                console.error('❌ Failed to load library:', error);
+                console.error('Error details:', {
+                    message: error.message,
+                    stack: error.stack,
+                    type: error.constructor.name
+                });
+                document.body.innerHTML = `
+                <div style="max-width: 800px; margin: 100px auto; padding: 40px; background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                    <h1 style="color: #d32f2f; margin-bottom: 20px; font-size: 2em; font-weight: 700;">⚠️ Server Required</h1>
+                    <p style="font-size: 1.1em; line-height: 1.6; color: #1a1a1a; margin-bottom: 30px; font-weight: 500;">
+                        This demo requires a local web server to work. You cannot open it directly from the file system.
+                    </p>
+                    <div style="background: #fff3e0; padding: 24px; border-radius: 8px; text-align: left; margin-bottom: 24px; border: 2px solid #ff9800;">
+                        <h3 style="margin-bottom: 12px; color: #1a1a1a; font-size: 1.2em; font-weight: 600;">Start a web server from PROJECT ROOT:</h3>
+                        <p style="margin-bottom: 16px; color: #e65100; font-weight: 600; font-size: 0.95em;">⚠️ Must run from project root (not demo folder) to access ../dist/</p>
+                        <div style="margin-bottom: 12px; padding: 12px; background: white; border-radius: 6px;">
+                            <div style="margin-bottom: 4px; color: #1a1a1a; font-weight: 600;">Option 1: NPX (Recommended)</div>
+                            <code style="background: #1a1a1a; color: #4fc3f7; padding: 6px 12px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-weight: 600; display: inline-block;">npx http-server -p 8080</code>
+                        </div>
+                        <div style="margin-bottom: 0; padding: 12px; background: white; border-radius: 6px;">
+                            <div style="margin-bottom: 4px; color: #1a1a1a; font-weight: 600;">Option 2: Python 3</div>
+                            <code style="background: #1a1a1a; color: #4fc3f7; padding: 6px 12px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-weight: 600; display: inline-block;">python3 -m http.server 8080</code>
+                        </div>
+                    </div>
+                    <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin-bottom: 16px; border: 2px solid #4caf50;">
+                        <p style="color: #1a1a1a; font-weight: 600; font-size: 1.1em; margin-bottom: 12px;">📍 Then open in your browser:</p>
+                        <div style="background: white; padding: 12px; border-radius: 6px;">
+                            <code style="background: #1a1a1a; color: #66bb6a; padding: 8px 16px; border-radius: 6px; font-size: 1.1em; font-family: 'JetBrains Mono', monospace; font-weight: 600; display: inline-block;">http://localhost:8080/demo/telemetry-dashboard.html</code>
+                        </div>
+                    </div>
+                </div>
+            `;
+                throw error;
+            }
+        })();
+
+        function initializeDashboard() {
+            let client = null;
+            let telemetryActive = false;
+            let events = [];
+            let performanceData = [];
+
+            window.startTelemetry = () => {
+            telemetryActive = true;
+
+            // Enable debugging (if available in this version)
+            if (enableDebug) {
+                enableDebug('debug');
+            }
+
+            // Create client with telemetry
+            client = createAudioClient({
+                proxyUrl: 'http://localhost:3002',
+                autoDetect: true,
+                fallbackToOriginal: true,
+                telemetry: {
+                    enabled: true,
+                    trackPerformance: true,
+                    trackErrors: true,
+                    onEvent: handleTelemetryEvent
+                }
+            });
+
+            updateUI();
+            alert('Telemetry started! Test a URL to see data.');
+        };
+
+        window.stopTelemetry = () => {
+            telemetryActive = false;
+            updateUI();
+        };
+
+        window.clearLogs = () => {
+            events = [];
+            performanceData = [];
+            document.getElementById('logs').innerHTML = '';
+            document.getElementById('timeline').innerHTML = '';
+            document.getElementById('eventDetails').textContent = 'Logs cleared.';
+            updateStats();
+        };
+
+        window.exportData = () => {
+            const data = {
+                events,
+                performanceData,
+                timestamp: new Date().toISOString(),
+                stats: getStats()
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `telemetry-${Date.now()}.json`;
+            a.click();
+        };
+
+        window.testUrl = async () => {
+            if (!client) {
+                alert('Please start telemetry first!');
+                return;
+            }
+
+            const url = document.getElementById('testUrl').value;
+            if (!url) {
+                alert('Please enter a URL!');
+                return;
+            }
+
+            try {
+                const playableUrl = await client.getPlayableUrl(url);
+                console.log('Playable URL:', playableUrl);
+                addLog('info', `URL converted successfully: ${url}`);
+            } catch (error) {
+                addLog('error', `Failed to convert URL: ${error.message}`);
+            }
+        };
+
+        function handleTelemetryEvent(event) {
+            events.push(event);
+
+            if (event.type === 'performance') {
+                performanceData.push(event);
+                updatePerformanceMetrics();
+            }
+
+            addTimelineEntry(event);
+            updateStats();
+            updateEventDetails(event);
+        }
+
+        function addLog(level, message) {
+            const logsContainer = document.getElementById('logs');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${level}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsContainer.insertBefore(entry, logsContainer.firstChild);
+
+            // Keep only last 50 logs
+            while (logsContainer.children.length > 50) {
+                logsContainer.removeChild(logsContainer.lastChild);
+            }
+        }
+
+        function addTimelineEntry(event) {
+            const timeline = document.getElementById('timeline');
+            const entry = document.createElement('div');
+            entry.className = 'timeline-entry';
+
+            const categoryBadge = getCategoryBadge(event.type);
+
+            entry.innerHTML = `
+                <div class="timeline-time">${new Date(event.timestamp).toLocaleTimeString()}</div>
+                <div class="timeline-event">
+                    ${categoryBadge}
+                    <span>${event.type}</span>
+                </div>
+            `;
+
+            timeline.insertBefore(entry, timeline.firstChild);
+
+            // Keep only last 30 entries
+            while (timeline.children.length > 30) {
+                timeline.removeChild(timeline.lastChild);
+            }
+        }
+
+        function getCategoryBadge(type) {
+            const badges = {
+                'proxy_start': '<span class="badge badge-proxy">PROXY</span>',
+                'proxy_stop': '<span class="badge badge-proxy">PROXY</span>',
+                'url_conversion': '<span class="badge badge-client">CLIENT</span>',
+                'error': '<span class="badge badge-network">ERROR</span>',
+                'performance': '<span class="badge badge-perf">PERF</span>'
+            };
+            return badges[type] || '<span class="badge">EVENT</span>';
+        }
+
+        function updateStats() {
+            const stats = getStats();
+            document.getElementById('totalEvents').textContent = stats.total;
+            document.getElementById('errorCount').textContent = stats.errors;
+            document.getElementById('avgResponse').textContent = stats.avgResponse;
+            document.getElementById('successRate').textContent = stats.successRate;
+        }
+
+        function getStats() {
+            const total = events.length;
+            const errors = events.filter(e => e.type === 'error').length;
+            const perfEvents = performanceData.filter(e => e.data?.duration);
+            const avgDuration = perfEvents.length > 0
+                ? (perfEvents.reduce((sum, e) => sum + e.data.duration, 0) / perfEvents.length).toFixed(0)
+                : '-';
+            const successRate = total > 0 ? (((total - errors) / total) * 100).toFixed(1) : '100';
+
+            return {
+                total,
+                errors,
+                avgResponse: avgDuration !== '-' ? `${avgDuration}ms` : '-',
+                successRate: `${successRate}%`
+            };
+        }
+
+        function updatePerformanceMetrics() {
+            const container = document.getElementById('performanceMetrics');
+            const recent = performanceData.slice(-10);
+
+            if (recent.length === 0) {
+                container.innerHTML = '<p style="color: #999;">No performance data yet</p>';
+                return;
+            }
+
+            let html = '<div style="font-size: 0.9em;">';
+            recent.reverse().forEach(event => {
+                const label = event.data?.label || 'Operation';
+                const duration = event.data?.duration?.toFixed(2) || '?';
+                html += `<div style="padding: 8px; margin-bottom: 4px; background: #f8f9fa; border-radius: 4px; color: #1a1a1a;">
+                    <strong style="color: #667eea;">${label}:</strong> <span style="color: #2d3748;">${duration}ms</span>
+                </div>`;
+            });
+            html += '</div>';
+
+            container.innerHTML = html;
+        }
+
+        function updateEventDetails(event) {
+            const details = document.getElementById('eventDetails');
+            details.textContent = JSON.stringify(event, null, 2);
+        }
+
+        function updateUI() {
+            // Update UI based on telemetry state
+        }
+
+        // Playground functions
+        window.updatePlaygroundConfig = () => {
+            // Config updated - visual feedback only
+        };
+
+        window.applyPlaygroundConfig = () => {
+            const autoStart = document.getElementById('autoStart').checked;
+            const fallback = document.getElementById('fallback').checked;
+            const retryAttempts = parseInt(document.getElementById('retryAttempts').value);
+
+            client = createAudioClient({
+                proxyUrl: 'http://localhost:3002',
+                autoStartProxy: autoStart,
+                fallbackToOriginal: fallback,
+                retryAttempts,
+                telemetry: {
+                    enabled: true,
+                    trackPerformance: true,
+                    trackErrors: true,
+                    onEvent: handleTelemetryEvent
+                }
+            });
+
+            addLog('info', `Configuration applied: autoStart=${autoStart}, fallback=${fallback}, retries=${retryAttempts}`);
+            alert('Configuration applied! Test a URL to see the new behavior.');
+        };
+
+        window.generateCode = () => {
+            const framework = document.getElementById('framework').value;
+            const codeArea = document.getElementById('generatedCode');
+
+            const codes = {
+                vanilla: `// Vanilla JavaScript
+import { createAudioClient } from 'desktop-audio-proxy';
+
+const client = createAudioClient({
+  autoStartProxy: ${document.getElementById('autoStart').checked},
+  fallbackToOriginal: ${document.getElementById('fallback').checked},
+  retryAttempts: ${document.getElementById('retryAttempts').value}
+});
+
+const playableUrl = await client.getPlayableUrl('your-audio-url.mp3');
+audioElement.src = playableUrl;`,
+
+                react: `// React Component
+import { useAudioProxy } from 'desktop-audio-proxy/react';
+
+function AudioPlayer({ url }) {
+  const { audioUrl, isLoading, error, retry } = useAudioProxy(url, {
+    autoStartProxy: ${document.getElementById('autoStart').checked},
+    fallbackToOriginal: ${document.getElementById('fallback').checked},
+    retryAttempts: ${document.getElementById('retryAttempts').value}
+  });
+
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error} <button onClick={retry}>Retry</button></div>;
+
+  return <audio src={audioUrl} controls />;
+}`,
+
+                vue: `<!-- Vue Component -->
+<script setup>
+import { useAudioProxy } from 'desktop-audio-proxy/vue';
+
+const { audioUrl, isLoading, error, retry } = useAudioProxy(audioUrl, {
+  autoStartProxy: ${document.getElementById('autoStart').checked},
+  fallbackToOriginal: ${document.getElementById('fallback').checked},
+  retryAttempts: ${document.getElementById('retryAttempts').value}
+});
+<\/script>
+
+<template>
+  <div v-if="isLoading">Loading...</div>
+  <div v-else-if="error">{{ error }} <button @click="retry">Retry</button></div>
+  <audio v-else :src="audioUrl" controls></audio>
+</template>`,
+
+                tauri: `// Tauri Integration
+import { TauriAudioService } from 'desktop-audio-proxy';
+
+const audioService = new TauriAudioService({
+  autoStartProxy: ${document.getElementById('autoStart').checked},
+  fallbackToOriginal: ${document.getElementById('fallback').checked},
+  retryAttempts: ${document.getElementById('retryAttempts').value}
+});
+
+const streamUrl = await audioService.getStreamableUrl(originalUrl);
+audioElement.src = streamUrl;`,
+
+                electron: `// Electron Integration
+import { ElectronAudioService } from 'desktop-audio-proxy';
+
+const audioService = new ElectronAudioService({
+  autoStartProxy: ${document.getElementById('autoStart').checked},
+  fallbackToOriginal: ${document.getElementById('fallback').checked},
+  retryAttempts: ${document.getElementById('retryAttempts').value}
+});
+
+const streamUrl = await audioService.getStreamableUrl(originalUrl);
+audioElement.src = streamUrl;`
+            };
+
+            codeArea.textContent = codes[framework];
+        };
+
+        window.copyCode = () => {
+            const code = document.getElementById('generatedCode').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                alert('Code copied to clipboard!');
+            });
+        };
+
+            // Show initial state
+            updateStats();
+            generateCode();
+        }
+    </script>
+</body>
+</html>

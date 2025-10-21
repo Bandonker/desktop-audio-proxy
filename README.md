@@ -40,17 +40,23 @@
 ## Features
 
 - **CORS Bypass** - Play external audio URLs without CORS restrictions
+- **Auto-Start Proxy** - Automatically spin up proxy server when needed (Node.js only)
+- **Tauri v1 & v2 Support** - Works seamlessly with both Tauri versions
+- **Debug Logger** - Multi-level logging with category filtering for troubleshooting
+- **Telemetry System** - Optional performance monitoring and event tracking
 - **React/Vue Integration** - Ready-to-use hooks and composables for seamless framework integration
-- **Enhanced Codec Detection** - Comprehensive format testing with real-time capabilities mapping 
-- **Audio Metadata Extraction** - Get duration, format, bitrate from audio files 
-- **Audio Device Enumeration** - List and manage available audio devices 
+- **Enhanced Codec Detection** - Comprehensive format testing with real-time capabilities mapping
+- **Audio Metadata Extraction** - Get duration, format, bitrate from audio files
+- **Audio Device Enumeration** - List and manage available audio devices
 - **WebKit Compatibility** - Solves codec issues in Tauri/Electron WebView
 - **Environment Detection** - Automatically detects Tauri, Electron, or web environment
 - **Smart Fallbacks** - Graceful degradation when proxy unavailable
+- **Actionable Error Messages** - Clear error messages with specific steps to fix issues
 - **Retry Logic** - Configurable retry attempts with delays
 - **Health Monitoring** - Built-in health and info endpoints
-- **TypeScript** - Full type safety and IntelliSense support
+- **TypeScript** - Full type safety and IntelliSense support with JSDoc comments
 - **Range Requests** - Support for audio seeking and streaming
+- **Tree-Shakeable** - Optimized for smaller bundles with dead code elimination
 - **Interactive Demo** - Live testing environment with auto-detection 
 
 ##  Demos
@@ -154,7 +160,7 @@ import { startProxyServer, AudioProxyServer } from 'desktop-audio-proxy/server';
 npm run demo
 ```
 
-**v1.1.2 Demo Features:**
+**v1.1.3 Demo Features:**
 -  **Auto-Detection** - Automatically finds and loads available library builds (local, CDN, various formats)
 -  **Version Detection** - Shows current library version with upgrade recommendations
 -  **Enhanced Features Showcase** - Live codec detection, metadata extraction, device enumeration
@@ -201,7 +207,7 @@ npm run demo:cli
 2) System Diagnostics      - Check library capabilities and network
 3) Proxy Server Status     - Monitor proxy server health
 4) Show Example URLs       - Curated list of test URLs
-5) Advanced Features Demo  - Showcase enhanced v1.1.2 features
+5) Advanced Features Demo  - Showcase enhanced v1.1.3 features
 6) View Test Results       - History of all URL tests
 7) Show Startup Commands   - Display setup commands for full demo
 h) Help & Documentation    - Learn about the library
@@ -264,6 +270,35 @@ const streamUrl = await audioService.getStreamableUrl(originalUrl);
 audioElement.src = streamUrl;
 ```
 
+### Auto-Start Proxy (Node.js Only)
+
+No need to manually start a proxy server - just enable `autoStartProxy` and the library handles it for you:
+
+```typescript
+import { createAudioClient } from 'desktop-audio-proxy';
+
+const audioClient = createAudioClient({
+  autoStartProxy: true, // Automatically starts proxy when needed
+  proxyServerConfig: {
+    port: 3002,
+    corsOrigins: '*',
+    enableLogging: false
+  }
+});
+
+// That's it! The proxy starts automatically when needed
+const playableUrl = await audioClient.getPlayableUrl('https://example.com/audio.mp3');
+
+// Clean up when done (optional - automatically cleaned on process exit)
+await audioClient.stopProxyServer();
+```
+
+**How it works:**
+1. Client checks if proxy server is available
+2. If not available and `autoStartProxy` is enabled, starts proxy automatically
+3. Only happens in Node.js environments (browser-safe)
+4. Server stops when your app closes, or manually with `stopProxyServer()`
+
 ### Electron Integration
 
 ```typescript
@@ -299,6 +334,186 @@ const audioClient = createAudioClient({
   }
 });
 ```
+
+## Debugging
+
+Need to see what's happening under the hood? Built-in debugger makes it easy:
+
+```typescript
+import { enableDebug, getDebugger } from 'desktop-audio-proxy';
+
+// Quick enable with defaults
+enableDebug('debug'); // Logs everything
+
+// Or customize what you see
+enableDebug('info', ['client', 'proxy', 'network']);
+
+// Get the debugger instance for advanced control
+const debugger = getDebugger();
+
+// View logs
+console.log(debugger.getLogs());
+
+// Export logs for bug reports
+const logsJson = debugger.exportLogs();
+
+// Get statistics
+debugger.printStats();
+
+// Turn it off when done
+import { disableDebug } from 'desktop-audio-proxy';
+disableDebug();
+```
+
+**Debug Categories:**
+- `client` - Client initialization and URL processing
+- `server` - Proxy server operations
+- `proxy` - Proxy request/response handling
+- `environment` - Environment detection (Tauri/Electron/Web)
+- `performance` - Performance metrics and timing
+- `network` - Network requests and responses
+- `tauri` - Tauri-specific operations
+- `electron` - Electron-specific operations
+
+**Log Levels:**
+- `debug` - Everything (verbose)
+- `info` - General information
+- `warn` - Warnings
+- `error` - Errors only
+
+**Custom Log Handler:**
+```typescript
+import { getDebugger } from 'desktop-audio-proxy';
+
+const debugger = getDebugger({
+  enabled: true,
+  level: 'debug',
+  onLog: (entry) => {
+    // Send to your analytics, crash reporting, etc.
+    myLogger.log(entry);
+  }
+});
+```
+
+## Telemetry
+
+Track performance and usage patterns with the optional telemetry system. All data stays local unless you explicitly send it somewhere. This is useful for monitoring your audio streaming performance, debugging issues, and understanding how users interact with your audio features.
+
+### Basic Setup
+
+```typescript
+import { createAudioClient } from 'desktop-audio-proxy';
+
+const audioClient = createAudioClient({
+  telemetry: {
+    enabled: true,
+    trackPerformance: true,
+    trackErrors: true,
+    onEvent: (event) => {
+      console.log('Telemetry Event:', event);
+      // event contains: type, timestamp, data
+    }
+  }
+});
+```
+
+### Event Types
+
+**proxy_check** - Fired when checking if proxy server is available
+```javascript
+{
+  type: 'proxy_check',
+  timestamp: 1761065276620,
+  data: {
+    available: true,
+    proxyUrl: 'http://localhost:3002'
+  }
+}
+```
+
+**url_conversion** - Fired when converting a URL to playable format
+```javascript
+{
+  type: 'url_conversion',
+  timestamp: 1761065276620,
+  data: {
+    url: 'https://example.com/audio.mp3',
+    result: 'http://localhost:3002/proxy?url=...',
+    type: 'proxy',
+    success: true,
+    attempt: 1
+  }
+}
+```
+
+**performance** - Fired for operation timing measurements
+```javascript
+{
+  type: 'performance',
+  timestamp: 1761065276620,
+  data: {
+    label: 'url_conversion',
+    duration: 51,
+    url: 'https://example.com/audio.mp3'
+  }
+}
+```
+
+**error** - Fired when an error occurs
+```javascript
+{
+  type: 'error',
+  timestamp: 1761065276620,
+  data: {
+    error: 'Proxy server unavailable',
+    context: 'url_conversion'
+  }
+}
+```
+
+### Real-World Integration
+
+Send telemetry data to your analytics service:
+
+```typescript
+const audioClient = createAudioClient({
+  telemetry: {
+    enabled: true,
+    trackPerformance: true,
+    trackErrors: true,
+    onEvent: (event) => {
+      // Send to Google Analytics
+      gtag('event', event.type, {
+        event_category: 'audio_proxy',
+        event_label: event.data?.url,
+        value: event.data?.duration
+      });
+
+      // Or send to your own backend
+      fetch('/api/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event)
+      });
+
+      // Or send to Mixpanel
+      mixpanel.track(event.type, event.data);
+    }
+  }
+});
+```
+
+### Metrics You Can Track
+
+- **Success Rate** - Percentage of successful URL conversions
+- **Average Response Time** - How fast the proxy responds
+- **Error Rate** - How often conversions fail
+- **Proxy Availability** - Uptime of your proxy server
+- **User Behavior** - What audio sources your users access most
+
+### Privacy and Performance
+
+Telemetry is completely optional and disabled by default. When enabled, all data stays in your application unless you choose to send it elsewhere via the `onEvent` callback. The telemetry system adds minimal overhead (less than 1ms per operation) and does not slow down your audio playback.
 
 ## Framework Integration
 

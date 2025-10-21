@@ -1,6 +1,32 @@
 # Changelog
 
-All notable changes to Desktop Audio Proxy will be documented in this file.
+## [1.1.4] - 2025-10-21
+
+### Added
+- Tauri v2 support with automatic version detection (works with both v1 and v2)
+- Auto-start proxy server option for Node.js environments
+- Telemetry system for optional performance monitoring and debugging
+- Debug logger with multi-level logging and category filtering
+- Interactive telemetry dashboard demo
+- JSDoc comments for better IDE autocomplete
+- Security best practices guide (SECURITY.md)
+- Tauri v2 migration guide (TAURI_MIGRATION.md)
+- Performance benchmark suite
+
+### Changed
+- Improved error messages with actionable solutions
+- Added `sideEffects: false` for better tree-shaking
+- Enhanced TypeScript strict mode compliance
+
+### Fixed
+- Reserved keyword usage (renamed `debugger` to `debug`)
+- Missing return statements in async route handlers
+- TypeScript compilation warnings
+
+### Notes
+- No breaking changes, fully backward compatible
+- For Tauri v2, set `withGlobalTauri: true` in tauri.conf.json
+- See README for detailed feature documentation
 
 ## [1.1.1] - 2025-07-01
 
