@@ -14,6 +14,36 @@ import {
 } from './index';
 import { AudioProxyOptions, StreamInfo, Environment } from './types';
 
+type DesktopAudioService = TauriAudioService | ElectronAudioService;
+
+const WEB_AUDIO_MIME_TYPES: Record<string, string> = {
+  MP3: 'audio/mpeg',
+  OGG: 'audio/ogg',
+  WAV: 'audio/wav',
+  AAC: 'audio/aac',
+  FLAC: 'audio/flac',
+  WEBM: 'audio/webm',
+  M4A: 'audio/mp4',
+};
+
+const WEB_AUDIO_FORMATS = Object.keys(WEB_AUDIO_MIME_TYPES);
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function createDesktopAudioService(
+  environment: Environment
+): DesktopAudioService | null {
+  if (environment === 'tauri') {
+    return new TauriAudioService();
+  }
+  if (environment === 'electron') {
+    return new ElectronAudioService();
+  }
+  return null;
+}
+
 /**
  * Vue composable for managing audio proxy client with automatic URL processing
  */
@@ -45,8 +75,7 @@ export function useAudioProxy(
       const playableUrl = await client.getPlayableUrl(inputUrl);
       audioUrl.value = playableUrl;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      error.value = errorMessage;
+      error.value = getErrorMessage(err);
     } finally {
       isLoading.value = false;
     }
@@ -119,13 +148,7 @@ export function useAudioCapabilities() {
 
     try {
       const environment = client.getEnvironment();
-      let service: TauriAudioService | ElectronAudioService | null = null;
-
-      if (environment === 'tauri') {
-        service = new TauriAudioService();
-      } else if (environment === 'electron') {
-        service = new ElectronAudioService();
-      }
+      const service = createDesktopAudioService(environment);
 
       if (service) {
         // Get codec capabilities
@@ -153,33 +176,21 @@ export function useAudioCapabilities() {
       } else {
         // Basic web environment capabilities
         const audio = new Audio();
-        const formats = ['MP3', 'OGG', 'WAV', 'AAC', 'FLAC', 'WEBM', 'M4A'];
-        const supportedFormats = formats.filter(format => {
-          const mimeTypes = {
-            MP3: 'audio/mpeg',
-            OGG: 'audio/ogg',
-            WAV: 'audio/wav',
-            AAC: 'audio/aac',
-            FLAC: 'audio/flac',
-            WEBM: 'audio/webm',
-            M4A: 'audio/mp4',
-          };
-          return (
-            audio.canPlayType(mimeTypes[format as keyof typeof mimeTypes]) !==
-            ''
-          );
-        });
+        const supportedFormats = WEB_AUDIO_FORMATS.filter(
+          format => audio.canPlayType(WEB_AUDIO_MIME_TYPES[format]) !== ''
+        );
 
         capabilities.value = {
           supportedFormats,
-          missingCodecs: formats.filter(f => !supportedFormats.includes(f)),
+          missingCodecs: WEB_AUDIO_FORMATS.filter(
+            format => !supportedFormats.includes(format)
+          ),
           capabilities: {},
           environment,
         };
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      error.value = errorMessage;
+      error.value = getErrorMessage(err);
     } finally {
       isLoading.value = false;
     }
@@ -219,8 +230,7 @@ export function useProxyStatus(options?: AudioProxyOptions) {
       isAvailable.value = available;
       proxyUrl.value = client.getProxyUrl();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      error.value = errorMessage;
+      error.value = getErrorMessage(err);
       isAvailable.value = false;
     } finally {
       isChecking.value = false;
@@ -265,13 +275,7 @@ export function useAudioMetadata(filePath: Ref<string | null> | string | null) {
 
     try {
       const environment = client.getEnvironment();
-      let service: TauriAudioService | ElectronAudioService | null = null;
-
-      if (environment === 'tauri') {
-        service = new TauriAudioService();
-      } else if (environment === 'electron') {
-        service = new ElectronAudioService();
-      }
+      const service = createDesktopAudioService(environment);
 
       if (service) {
         const result = await service.getAudioMetadata(path);
@@ -281,8 +285,7 @@ export function useAudioMetadata(filePath: Ref<string | null> | string | null) {
           'Audio metadata extraction is only available in Tauri or Electron environments';
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      error.value = errorMessage;
+      error.value = getErrorMessage(err);
     } finally {
       isLoading.value = false;
     }

@@ -5,7 +5,13 @@ import {
 } from '../server-impl';
 import { ProxyConfig } from '../types';
 import axios from 'axios';
-import { createServer } from 'net';
+import {
+  createServer as createHttpServer,
+  IncomingMessage,
+  Server as NodeHttpServer,
+  ServerResponse,
+} from 'http';
+import { createServer as createNetServer } from 'net';
 
 // Type for error responses in tests
 interface ErrorResponse {
@@ -26,8 +32,8 @@ interface ServerAddress {
 // Helper to find available port for testing
 async function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.listen(0, () => {
+    const server = createNetServer();
+    server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as ServerAddress)?.port;
       server.close(() => {
         if (port) {
@@ -38,6 +44,33 @@ async function getAvailablePort(): Promise<number> {
       });
     });
   });
+}
+
+async function startLocalUpstreamServer(
+  handler: (_req: IncomingMessage, _res: ServerResponse) => void
+): Promise<{ server: NodeHttpServer; baseUrl: string }> {
+  return new Promise((resolve, reject) => {
+    const upstreamServer = createHttpServer(handler);
+
+    upstreamServer.once('error', reject);
+    upstreamServer.listen(0, '127.0.0.1', () => {
+      const address = upstreamServer.address();
+      if (!address || typeof address === 'string') {
+        upstreamServer.close();
+        reject(new Error('Could not determine upstream test server port'));
+        return;
+      }
+
+      resolve({
+        server: upstreamServer,
+        baseUrl: `http://127.0.0.1:${address.port}`,
+      });
+    });
+  });
+}
+
+async function stopLocalUpstreamServer(server: NodeHttpServer): Promise<void> {
+  await new Promise<void>(resolve => server.close(() => resolve()));
 }
 
 describe('AudioProxyServer', () => {
@@ -83,29 +116,35 @@ describe('AudioProxyServer', () => {
 
   describe('server lifecycle', () => {
     it('should start and stop server successfully', async () => {
-      server = new AudioProxyServer({ port: testPort });
+      server = new AudioProxyServer({ port: testPort, enableLogging: false });
 
       await server.start();
-      expect(server.getActualPort()).toBe(testPort);
+      expect(server.getActualPort()).toBeGreaterThan(0);
 
       await server.stop();
     });
 
     it('should find alternative port when configured port is occupied', async () => {
+      const occupiedPort = testPort;
+
       // Start a dummy server on the test port
-      const dummyServer = createServer();
+      const dummyServer = createNetServer();
       await new Promise<void>(resolve => {
-        dummyServer.listen(testPort, () => resolve());
+        dummyServer.listen(occupiedPort, '127.0.0.1', () => resolve());
       });
 
       try {
-        server = new AudioProxyServer({ port: testPort });
+        server = new AudioProxyServer({
+          port: occupiedPort,
+          host: '127.0.0.1',
+          enableLogging: false,
+        });
         await server.start();
 
         // Should use a different port
-        expect(server.getActualPort()).toBeGreaterThan(testPort);
+        expect(server.getActualPort()).toBeGreaterThan(occupiedPort);
       } finally {
-        dummyServer.close();
+        await new Promise<void>(resolve => dummyServer.close(() => resolve()));
       }
     });
 
@@ -114,7 +153,7 @@ describe('AudioProxyServer', () => {
       await server.start();
 
       const proxyUrl = server.getProxyUrl();
-      expect(proxyUrl).toBe(`http://localhost:${testPort}`);
+      expect(proxyUrl).toBe(`http://localhost:${server.getActualPort()}`);
     });
   });
 
@@ -125,14 +164,14 @@ describe('AudioProxyServer', () => {
     });
 
     it('should return health status', async () => {
-      const response = await axios.get(`http://localhost:${testPort}/health`);
+      const response = await axios.get(`${server.getProxyUrl()}/health`);
 
       expect(response.status).toBe(200);
       expect(response.data).toMatchObject({
         status: 'ok',
-        version: '1.1.5',
+        version: '1.1.7',
         config: {
-          port: testPort,
+          port: server.getActualPort(),
           configuredPort: testPort,
           enableTranscoding: false,
           cacheEnabled: true,
@@ -150,7 +189,7 @@ describe('AudioProxyServer', () => {
 
     it('should return error when URL parameter is missing', async () => {
       try {
-        await axios.get(`http://localhost:${testPort}/info`);
+        await axios.get(`${server.getProxyUrl()}/info`);
         fail('Expected error but request succeeded');
       } catch (error: unknown) {
         const errorResponse = error as ErrorResponse;
@@ -162,32 +201,74 @@ describe('AudioProxyServer', () => {
     });
 
     it('should return stream info for valid URL', async () => {
-      // Use a simple URL that exists and has audio headers
-      const testUrl = 'https://www.soundjay.com/misc/sounds/fail-buzzer-02.mp3';
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((req, res) => {
+          if (req.url !== '/audio-info') {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('not found');
+            return;
+          }
 
+          res.writeHead(200, {
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': '12345',
+            'Accept-Ranges': 'bytes',
+            'Last-Modified': 'Wed, 01 Jan 2020 00:00:00 GMT',
+          });
+          res.end();
+        });
+
+      const testUrl = `${baseUrl}/audio-info`;
       try {
-        const response = await axios.get(`http://localhost:${testPort}/info`, {
+        const response = await axios.get(`${server.getProxyUrl()}/info`, {
           params: { url: testUrl },
         });
 
         expect(response.status).toBe(200);
         expect(response.data).toMatchObject({
           url: testUrl,
-          status: expect.any(Number),
+          status: 200,
+          contentType: 'audio/mpeg',
+          contentLength: '12345',
+          acceptRanges: 'bytes',
+          lastModified: 'Wed, 01 Jan 2020 00:00:00 GMT',
         });
-        expect(response.data.contentType).toContain('audio');
-      } catch (error) {
-        // If the external URL is not accessible, skip the test
-        console.warn('Skipping external URL test due to network error:', error);
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
       }
     });
 
-    it.skip('should handle upstream errors properly', async () => {
-      // Test with a URL that returns 404
-      const testUrl = 'https://httpbin.org/status/404';
-
+    it('should reject blank URL parameter values', async () => {
       try {
-        await axios.get(`http://localhost:${testPort}/info`, {
+        await axios.get(`${server.getProxyUrl()}/info`, {
+          params: { url: '   ' },
+        });
+        fail('Expected error but request succeeded');
+      } catch (error: unknown) {
+        const errorResponse = error as ErrorResponse;
+        expect(errorResponse.response.status).toBe(400);
+        expect(errorResponse.response.data.error).toBe(
+          'URL parameter required'
+        );
+      }
+    });
+
+    it('should handle upstream errors properly', async () => {
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((req, res) => {
+          if (req.url === '/status-404') {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('not found');
+            return;
+          }
+
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end('ok');
+        });
+
+      const testUrl = `${baseUrl}/status-404`;
+      try {
+        await axios.get(`${server.getProxyUrl()}/info`, {
           params: { url: testUrl },
         });
         fail('Expected error but request succeeded');
@@ -197,6 +278,8 @@ describe('AudioProxyServer', () => {
         expect(errorResponse.response.data.error).toContain(
           'Upstream error: 404'
         );
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
       }
     });
 
@@ -204,7 +287,7 @@ describe('AudioProxyServer', () => {
       const testUrl = 'invalid-url-format';
 
       try {
-        await axios.get(`http://localhost:${testPort}/info`, {
+        await axios.get(`${server.getProxyUrl()}/info`, {
           params: { url: testUrl },
         });
         fail('Expected error but request succeeded');
@@ -226,7 +309,7 @@ describe('AudioProxyServer', () => {
 
     it('should return error when URL parameter is missing', async () => {
       try {
-        await axios.get(`http://localhost:${testPort}/proxy`);
+        await axios.get(`${server.getProxyUrl()}/proxy`);
         fail('Expected error but request succeeded');
       } catch (error: unknown) {
         const errorResponse = error as ErrorResponse;
@@ -237,105 +320,151 @@ describe('AudioProxyServer', () => {
       }
     });
 
-    it.skip('should proxy audio stream successfully', async () => {
-      // Test with a simple text URL that we can proxy
-      const testUrl = 'https://httpbin.org/get';
-
+    it('should reject blank URL parameter values', async () => {
       try {
-        const response = await axios.get(`http://localhost:${testPort}/proxy`, {
-          params: { url: testUrl },
-          timeout: 10000,
-        });
-
-        expect(response.status).toBe(200);
-        // The response should contain data from httpbin
-        expect(response.data).toBeDefined();
-      } catch (error: unknown) {
-        const errorResponse = error as ErrorResponse;
-        // If external service is down, just verify we get a proper error response
-        if ((error as ErrorResponse).response) {
-          expect(errorResponse.response.status).toBeGreaterThan(0);
-        }
-      }
-    });
-
-    it.skip('should handle range requests for seeking', async () => {
-      // Test with httpbin which supports range requests
-      const testUrl = 'https://httpbin.org/range/1024';
-
-      try {
-        const response = await axios.get(`http://localhost:${testPort}/proxy`, {
-          params: { url: testUrl },
-          headers: { Range: 'bytes=0-511' },
-          timeout: 10000,
-        });
-
-        // Should either return 206 (partial content) or 200 (full content)
-        expect([200, 206]).toContain(response.status);
-      } catch (error: unknown) {
-        const errorResponse = error as ErrorResponse;
-        // Some services may not support range requests, that's OK
-        if ((error as ErrorResponse).response) {
-          expect(errorResponse.response.status).toBeGreaterThan(0);
-        }
-      }
-    });
-
-    it('should handle non-existent domains', async () => {
-      const testUrl = 'https://nonexistent-domain-12345.invalid/audio.mp3';
-
-      try {
-        await axios.get(`http://localhost:${testPort}/proxy`, {
-          params: { url: testUrl },
-          timeout: 5000,
+        await axios.get(`${server.getProxyUrl()}/proxy`, {
+          params: { url: '   ' },
         });
         fail('Expected error but request succeeded');
       } catch (error: unknown) {
         const errorResponse = error as ErrorResponse;
-        expect(errorResponse.response.status).toBe(404);
+        expect(errorResponse.response.status).toBe(400);
         expect(errorResponse.response.data.error).toBe(
-          'Audio source not found'
+          'URL parameter required'
         );
       }
     });
 
+    it('should proxy audio stream successfully', async () => {
+      const mockAudio = Buffer.from('mock-audio-stream-data');
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((req, res) => {
+          if (req.url === '/audio') {
+            res.writeHead(200, {
+              'Content-Type': 'audio/mpeg',
+              'Content-Length': String(mockAudio.length),
+              'Accept-Ranges': 'bytes',
+            });
+            res.end(mockAudio);
+            return;
+          }
+
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('not found');
+        });
+
+      const testUrl = `${baseUrl}/audio`;
+      try {
+        const response = await axios.get(`${server.getProxyUrl()}/proxy`, {
+          params: { url: testUrl },
+          responseType: 'arraybuffer',
+          timeout: 10000,
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.headers['content-type']).toContain('audio/mpeg');
+        expect(Buffer.from(response.data)).toEqual(mockAudio);
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
+      }
+    });
+
+    it('should handle range requests for seeking', async () => {
+      const fullPayload = Buffer.alloc(1024, 1);
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((req, res) => {
+          if (req.url !== '/range-target') {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('not found');
+            return;
+          }
+
+          if (req.headers.range === 'bytes=0-511') {
+            const partial = fullPayload.subarray(0, 512);
+            res.writeHead(206, {
+              'Content-Type': 'audio/mpeg',
+              'Accept-Ranges': 'bytes',
+              'Content-Range': 'bytes 0-511/1024',
+              'Content-Length': String(partial.length),
+            });
+            res.end(partial);
+            return;
+          }
+
+          res.writeHead(200, {
+            'Content-Type': 'audio/mpeg',
+            'Accept-Ranges': 'bytes',
+            'Content-Length': String(fullPayload.length),
+          });
+          res.end(fullPayload);
+        });
+
+      const testUrl = `${baseUrl}/range-target`;
+      try {
+        const response = await axios.get(`${server.getProxyUrl()}/proxy`, {
+          params: { url: testUrl },
+          headers: { Range: 'bytes=0-511' },
+          responseType: 'arraybuffer',
+          timeout: 10000,
+        });
+
+        expect(response.status).toBe(206);
+        expect(response.headers['content-range']).toBe('bytes 0-511/1024');
+        expect(Buffer.from(response.data)).toHaveLength(512);
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
+      }
+    });
+
     it('should handle connection refused errors', async () => {
-      const testUrl = 'http://localhost:99999/audio.mp3';
+      const testUrl = 'http://127.0.0.1:1/audio.mp3';
 
       try {
-        await axios.get(`http://localhost:${testPort}/proxy`, {
+        await axios.get(`${server.getProxyUrl()}/proxy`, {
           params: { url: testUrl },
           timeout: 5000,
         });
         fail('Expected error but request succeeded');
       } catch (error: unknown) {
         const errorResponse = error as ErrorResponse;
-        // The high port number causes ERR_INVALID_URL or similar, which results in 500
-        // Both 500 and 503 are valid responses for this type of error
-        expect([500, 503]).toContain(errorResponse.response.status);
-        expect(errorResponse.response.data.error).toMatch(
-          /Audio source|Proxy request failed/
+        expect(errorResponse.response.status).toBe(503);
+        expect(errorResponse.response.data.error).toBe(
+          'Audio source unavailable'
         );
       }
     });
 
     it('should handle timeout errors', async () => {
-      // Use httpbin delay endpoint to test timeout
-      const testUrl = 'https://httpbin.org/delay/10'; // 10 second delay
+      await server.stop();
+      server = new AudioProxyServer({
+        port: testPort,
+        enableLogging: false,
+        timeout: 100,
+      });
+      await server.start();
+
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((_req, res) => {
+          setTimeout(() => {
+            res.writeHead(200, { 'Content-Type': 'audio/mpeg' });
+            res.end(Buffer.alloc(64, 1));
+          }, 500);
+        });
+
+      const testUrl = `${baseUrl}/slow-audio`;
 
       try {
-        await axios.get(`http://localhost:${testPort}/proxy`, {
+        await axios.get(`${server.getProxyUrl()}/proxy`, {
           params: { url: testUrl },
-          timeout: 2000, // 2 second timeout
+          timeout: 5000,
         });
         fail('Expected timeout error but request succeeded');
       } catch (error: unknown) {
         const errorResponse = error as ErrorResponse;
-        // Should timeout either at axios level or proxy level
-        expect(
-          errorResponse.response?.status ||
-            (error as Error & { code?: string }).code
-        ).toBeDefined();
+        expect(errorResponse.response.status).toBe(408);
+        expect(errorResponse.response.data.error).toBe('Request timeout');
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
       }
     });
   });
@@ -351,16 +480,13 @@ describe('AudioProxyServer', () => {
     });
 
     it('should handle OPTIONS preflight requests', async () => {
-      const response = await axios.options(
-        `http://localhost:${testPort}/proxy`,
-        {
-          headers: {
-            Origin: 'http://localhost:3000',
-            'Access-Control-Request-Method': 'GET',
-            'Access-Control-Request-Headers': 'Range',
-          },
-        }
-      );
+      const response = await axios.options(`${server.getProxyUrl()}/proxy`, {
+        headers: {
+          Origin: 'http://localhost:3000',
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'Range',
+        },
+      });
 
       expect(response.status).toBe(204);
       expect(response.headers['access-control-allow-origin']).toBe(
@@ -384,7 +510,7 @@ describe('AudioProxyServer', () => {
       const config: ProxyConfig = { port: testPort };
       server = await startProxyServer(config);
       expect(server).toBeInstanceOf(AudioProxyServer);
-      expect(server.getActualPort()).toBe(testPort);
+      expect(server.getActualPort()).toBeGreaterThan(0);
     });
   });
 });

@@ -6,7 +6,7 @@
 
 
 <p align="center" style="font-size:1.1em;">
-  <strong>Bypasses CORS & WebKit codec issues in Tauri and Electron audio apps with ease.</strong>
+  <strong>Bypasses CORS & WebKit codec issues in Tauri and Electron apps with universal audio and video streaming support.</strong>
 </p>
 
 <p align="center">
@@ -39,14 +39,15 @@
 
 ## Features
 
-- **CORS Bypass** - Play external audio URLs without CORS restrictions
+- **CORS Bypass** - Play external audio/video URLs without CORS restrictions
+- **Universal Media Streaming** - Supports audio (MP3, AAC, OGG, WAV) and video (MP4, M3U8/HLS, WebM)
 - **Auto-Start Proxy** - Automatically spin up proxy server when needed (Node.js only)
 - **Tauri v1 & v2 Support** - Works seamlessly with both Tauri versions
 - **Debug Logger** - Multi-level logging with category filtering for troubleshooting
 - **Telemetry System** - Optional performance monitoring and event tracking
 - **React/Vue Integration** - Ready-to-use hooks and composables for seamless framework integration
 - **Enhanced Codec Detection** - Comprehensive format testing with real-time capabilities mapping
-- **Audio Metadata Extraction** - Get duration, format, bitrate from audio files
+- **Media Metadata Extraction** - Get duration, format, bitrate from audio/video files
 - **Audio Device Enumeration** - List and manage available audio devices
 - **WebKit Compatibility** - Solves codec issues in Tauri/Electron WebView
 - **Environment Detection** - Automatically detects Tauri, Electron, or web environment
@@ -54,8 +55,11 @@
 - **Actionable Error Messages** - Clear error messages with specific steps to fix issues
 - **Retry Logic** - Configurable retry attempts with delays
 - **Health Monitoring** - Built-in health and info endpoints
+- **Stream Lifecycle Hardening** - Conservative cleanup for aborted/closed proxy streams
+- **Deterministic Core Tests** - Local upstream mock coverage for info/proxy/timeout paths
 - **TypeScript** - Full type safety and IntelliSense support with JSDoc comments
-- **Range Requests** - Support for audio seeking and streaming
+- **Range Requests** - Full support for seeking in audio and video streams
+- **HLS/Adaptive Streaming** - Handle M3U8 playlists and adaptive bitrate streaming
 - **Tree-Shakeable** - Optimized for smaller bundles with dead code elimination
 - **Interactive Demo** - Live testing environment with auto-detection 
 
@@ -106,16 +110,19 @@ Seamless proxy server integration with automatic port detection:
 
 When building desktop applications with web technologies (Tauri, Electron), developers often face:
 
-1. **CORS Issues**: External audio URLs (podcasts, radio streams) are blocked due to Cross-Origin Resource Sharing policies
-2. **Codec Compatibility**: WebKit may not support certain audio codecs even with proper GStreamer plugins installed
-3. **Authentication**: Some audio streams require special headers or authentication
-4. **Redirects**: Many podcast/streaming URLs use multiple redirects that cause issues
+1. **CORS Issues**: External audio/video URLs (podcasts, radio streams, video content) are blocked due to Cross-Origin Resource Sharing policies
+2. **Codec Compatibility**: WebKit may not support certain audio/video codecs even with proper GStreamer plugins installed
+3. **Authentication**: Some media streams require special headers or authentication
+4. **Redirects**: Many podcast/streaming/video URLs use multiple redirects that cause issues
+5. **HLS/Adaptive Streaming**: M3U8 playlists and adaptive bitrate video may fail to load properly
 
 ## The Solution
 
 Desktop Audio Proxy provides:
 
-- **Automatic CORS bypass** for external audio URLs
+- **Automatic CORS bypass** for external audio and video URLs
+- **Universal media streaming** - works with audio (MP3, AAC, WAV) and video (MP4, WebM, M3U8/HLS)
+- **Range request support** - enables seeking in both audio and video
 - **Codec transcoding** support (optional, requires ffmpeg)
 - **Smart redirect handling** with configurable limits
 - **Automatic environment detection** (Tauri/Electron/Web)
@@ -256,6 +263,57 @@ const audioClient = createAudioClient({
 const playableUrl = await audioClient.getPlayableUrl('https://example.com/audio.mp3');
 ```
 
+### Video Streaming (MP4, M3U8/HLS, WebM)
+
+DAP fully supports video streaming with the same simple API:
+
+```typescript
+import { createAudioClient } from 'desktop-audio-proxy';
+
+const audioClient = createAudioClient({ autoStartProxy: true });
+
+// MP4 video streaming
+const videoUrl = await audioClient.getPlayableUrl('https://example.com/video.mp4');
+videoElement.src = videoUrl;
+
+// M3U8/HLS adaptive streaming
+const hlsUrl = await audioClient.getPlayableUrl('https://example.com/playlist.m3u8');
+videoElement.src = hlsUrl;
+
+// WebM video
+const webmUrl = await audioClient.getPlayableUrl('https://example.com/video.webm');
+videoElement.src = webmUrl;
+```
+
+**Video features automatically supported:**
+ - Range requests for seeking
+ - M3U8/HLS playlists (master and media playlists)
+ - Adaptive bitrate streaming
+ - All video codecs (H.264, H.265, VP8, VP9, AV1)
+ - Content-Type detection and proxying
+ - Video metadata extraction via `/info` endpoint
+
+**React Video Example:**
+
+```tsx
+import { useAudioUrl } from 'desktop-audio-proxy/react';
+
+function VideoPlayer({ url }) {
+  const { playableUrl, loading, error } = useAudioUrl(url, {
+    autoStartProxy: true
+  });
+
+  if (loading) return <div>Loading video...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <video controls width="100%">
+      <source src={playableUrl} />
+    </video>
+  );
+}
+```
+
 ### Tauri Integration
 
 ```typescript
@@ -266,9 +324,9 @@ const audioService = new TauriAudioService({
   autoDetect: true
 });
 
-// In your audio player
+// Works for both audio and video
 const streamUrl = await audioService.getStreamableUrl(originalUrl);
-audioElement.src = streamUrl;
+audioElement.src = streamUrl; // or videoElement.src
 ```
 
 ### Auto-Start Proxy (Node.js Only)
@@ -862,6 +920,8 @@ src/
    npm test            # Run all tests
    npm run lint        # Check code style
    ```
+
+> For deterministic/constrained validation (including no-network-install runs), follow the contributor runbook in **Testing → Contributor Runbook (Deterministic Local Validation)**.
 
 ### CI/CD Pipeline
 

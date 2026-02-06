@@ -5,9 +5,35 @@ import {
 } from '../server-impl';
 import { ProxyConfig } from '../types';
 import axios from 'axios';
+import { createServer as createNetServer } from 'net';
+
+interface ServerAddress {
+  port: number;
+}
+
+async function getAvailablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createNetServer();
+    server.listen(0, '127.0.0.1', () => {
+      const port = (server.address() as ServerAddress)?.port;
+      server.close(() => {
+        if (port) {
+          resolve(port);
+        } else {
+          reject(new Error('Could not find available port'));
+        }
+      });
+    });
+  });
+}
 
 describe('AudioProxyServer - Coverage Tests', () => {
   let server: AudioProxyServer;
+  let testPort: number;
+
+  beforeEach(async () => {
+    testPort = await getAvailablePort();
+  });
 
   afterEach(async () => {
     if (server) {
@@ -17,16 +43,14 @@ describe('AudioProxyServer - Coverage Tests', () => {
 
   describe('health endpoint integration', () => {
     it('should provide health endpoint', async () => {
-      server = new AudioProxyServer({ port: 5000, enableLogging: false });
+      server = new AudioProxyServer({ port: testPort, enableLogging: false });
       await server.start();
 
-      const response = await axios.get(
-        `http://localhost:${server.getActualPort()}/health`
-      );
+      const response = await axios.get(`${server.getProxyUrl()}/health`);
 
       expect(response.status).toBe(200);
       expect(response.data).toHaveProperty('status', 'ok');
-      expect(response.data).toHaveProperty('version', '1.1.5');
+      expect(response.data).toHaveProperty('version', '1.1.7');
       expect(response.data).toHaveProperty('uptime');
       expect(response.data.config).toHaveProperty('port');
       expect(response.data.config).toHaveProperty('enableTranscoding', false);
@@ -36,11 +60,11 @@ describe('AudioProxyServer - Coverage Tests', () => {
 
   describe('error handling', () => {
     it('should handle info endpoint without URL parameter', async () => {
-      server = new AudioProxyServer({ port: 5001, enableLogging: false });
+      server = new AudioProxyServer({ port: testPort, enableLogging: false });
       await server.start();
 
       try {
-        await axios.get(`http://localhost:${server.getActualPort()}/info`);
+        await axios.get(`${server.getProxyUrl()}/info`);
         fail('Should have thrown an error');
       } catch (error: any) {
         expect(error.response.status).toBe(400);
@@ -49,11 +73,11 @@ describe('AudioProxyServer - Coverage Tests', () => {
     });
 
     it('should handle proxy endpoint without URL parameter', async () => {
-      server = new AudioProxyServer({ port: 5002, enableLogging: false });
+      server = new AudioProxyServer({ port: testPort, enableLogging: false });
       await server.start();
 
       try {
-        await axios.get(`http://localhost:${server.getActualPort()}/proxy`);
+        await axios.get(`${server.getProxyUrl()}/proxy`);
         fail('Should have thrown an error');
       } catch (error: any) {
         expect(error.response.status).toBe(400);
@@ -65,22 +89,19 @@ describe('AudioProxyServer - Coverage Tests', () => {
   describe('CORS handling', () => {
     it('should handle OPTIONS preflight requests', async () => {
       server = new AudioProxyServer({
-        port: 5003,
+        port: testPort,
         enableLogging: false,
         corsOrigins: 'http://localhost:3000',
       });
       await server.start();
 
-      const response = await axios.options(
-        `http://localhost:${server.getActualPort()}/proxy`,
-        {
-          headers: {
-            Origin: 'http://localhost:3000',
-            'Access-Control-Request-Method': 'GET',
-            'Access-Control-Request-Headers': 'Range',
-          },
-        }
-      );
+      const response = await axios.options(`${server.getProxyUrl()}/proxy`, {
+        headers: {
+          Origin: 'http://localhost:3000',
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'Range',
+        },
+      });
 
       expect(response.status).toBe(204);
     });
@@ -88,7 +109,7 @@ describe('AudioProxyServer - Coverage Tests', () => {
 
   describe('configuration handling', () => {
     it('should handle logging enabled configuration', async () => {
-      server = new AudioProxyServer({ port: 5004, enableLogging: true });
+      server = new AudioProxyServer({ port: testPort, enableLogging: true });
       await server.start();
 
       // Just test that it starts successfully with logging enabled
@@ -97,7 +118,7 @@ describe('AudioProxyServer - Coverage Tests', () => {
 
     it('should handle custom CORS origins', async () => {
       server = new AudioProxyServer({
-        port: 5005,
+        port: testPort,
         corsOrigins: ['http://localhost:3000', 'http://localhost:3001'],
       });
       await server.start();
@@ -107,7 +128,7 @@ describe('AudioProxyServer - Coverage Tests', () => {
 
     it('should handle all configuration options', async () => {
       const config: ProxyConfig = {
-        port: 5006,
+        port: testPort,
         host: 'localhost',
         corsOrigins: 'http://example.com',
         timeout: 30000,
@@ -122,27 +143,34 @@ describe('AudioProxyServer - Coverage Tests', () => {
       server = new AudioProxyServer(config);
       await server.start();
 
-      expect(server.getActualPort()).toBe(5006);
-      expect(server.getProxyUrl()).toBe('http://localhost:5006');
+      expect(server.getActualPort()).toBe(testPort);
+      expect(server.getProxyUrl()).toBe(`http://localhost:${testPort}`);
     });
   });
 
   describe('port handling', () => {
     it('should find alternative port when specified port is busy', async () => {
-      // Start a server on port 5007
+      const busyPort = testPort;
+
+      // Start a server on the selected port
       const firstServer = new AudioProxyServer({
-        port: 5007,
+        port: busyPort,
+        host: '127.0.0.1',
         enableLogging: false,
       });
       await firstServer.start();
 
       try {
         // Try to start another server on the same port
-        server = new AudioProxyServer({ port: 5007, enableLogging: false });
+        server = new AudioProxyServer({
+          port: busyPort,
+          host: '127.0.0.1',
+          enableLogging: false,
+        });
         await server.start();
 
         // Should use a different port
-        expect(server.getActualPort()).toBeGreaterThan(5007);
+        expect(server.getActualPort()).toBeGreaterThan(busyPort);
       } finally {
         await firstServer.stop();
       }
@@ -151,14 +179,14 @@ describe('AudioProxyServer - Coverage Tests', () => {
 
   describe('convenience functions', () => {
     it('should create and start server with startProxyServer', async () => {
-      server = await startProxyServer({ port: 5008, enableLogging: false });
+      server = await startProxyServer({ port: testPort, enableLogging: false });
 
       expect(server).toBeInstanceOf(AudioProxyServer);
-      expect(server.getActualPort()).toBe(5008);
+      expect(server.getActualPort()).toBe(testPort);
     });
 
     it('should create server with createProxyServer', () => {
-      server = createProxyServer({ port: 5009 });
+      server = createProxyServer({ port: testPort });
 
       expect(server).toBeInstanceOf(AudioProxyServer);
     });
@@ -166,14 +194,14 @@ describe('AudioProxyServer - Coverage Tests', () => {
 
   describe('server state management', () => {
     it('should handle stop when server is not started', async () => {
-      server = new AudioProxyServer({ port: 5010 });
+      server = new AudioProxyServer({ port: testPort });
 
       // Should not throw when stopping a server that wasn't started
       await expect(server.stop()).resolves.toBeUndefined();
     });
 
     it('should handle multiple stop calls', async () => {
-      server = new AudioProxyServer({ port: 5011, enableLogging: false });
+      server = new AudioProxyServer({ port: testPort, enableLogging: false });
       await server.start();
 
       await server.stop();
@@ -181,16 +209,16 @@ describe('AudioProxyServer - Coverage Tests', () => {
     });
 
     it('should provide correct URLs before and after start', async () => {
-      server = new AudioProxyServer({ port: 5012, host: 'localhost' });
+      server = new AudioProxyServer({ port: testPort, host: 'localhost' });
 
       // Before start
-      expect(server.getProxyUrl()).toBe('http://localhost:5012');
-      expect(server.getActualPort()).toBe(5012);
+      expect(server.getProxyUrl()).toBe(`http://localhost:${testPort}`);
+      expect(server.getActualPort()).toBe(testPort);
 
       // After start
       await server.start();
-      expect(server.getProxyUrl()).toBe('http://localhost:5012');
-      expect(server.getActualPort()).toBe(5012);
+      expect(server.getProxyUrl()).toBe(`http://localhost:${testPort}`);
+      expect(server.getActualPort()).toBe(testPort);
     });
   });
 });

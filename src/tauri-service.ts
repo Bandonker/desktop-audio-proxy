@@ -3,6 +3,34 @@ import { AudioServiceOptions } from './types';
 
 // Type declarations for Tauri API that extends client.ts declarations
 
+const CODEC_FORMATS = [
+  { name: 'MP3', mime: 'audio/mpeg', codecs: ['mp3'] },
+  { name: 'OGG', mime: 'audio/ogg', codecs: ['vorbis', 'opus'] },
+  { name: 'WAV', mime: 'audio/wav', codecs: ['pcm'] },
+  { name: 'AAC', mime: 'audio/aac', codecs: ['mp4a.40.2'] },
+  { name: 'FLAC', mime: 'audio/flac', codecs: ['flac'] },
+  { name: 'WEBM', mime: 'audio/webm', codecs: ['vorbis', 'opus'] },
+  { name: 'M4A', mime: 'audio/mp4', codecs: ['mp4a.40.2'] },
+] as const;
+
+function isSupportedResult(result: string): boolean {
+  return result === 'probably' || result === 'maybe';
+}
+
+function mergeSupportedFormat(
+  format: string,
+  supportedFormats: string[],
+  missingCodecs: string[]
+): void {
+  if (!supportedFormats.includes(format)) {
+    supportedFormats.push(format);
+    const missingIndex = missingCodecs.indexOf(format);
+    if (missingIndex > -1) {
+      missingCodecs.splice(missingIndex, 1);
+    }
+  }
+}
+
 export class TauriAudioService {
   private audioClient: AudioProxyClient;
 
@@ -13,11 +41,11 @@ export class TauriAudioService {
   }
 
   public async getStreamableUrl(url: string): Promise<string> {
-    return await this.audioClient.getPlayableUrl(url);
+    return this.audioClient.getPlayableUrl(url);
   }
 
   public async canPlayStream(url: string) {
-    return await this.audioClient.canPlayUrl(url);
+    return this.audioClient.canPlayUrl(url);
   }
 
   public getEnvironment() {
@@ -25,7 +53,16 @@ export class TauriAudioService {
   }
 
   public async isProxyAvailable(): Promise<boolean> {
-    return await this.audioClient.isProxyAvailable();
+    return this.audioClient.isProxyAvailable();
+  }
+
+  private getTauriInvoke() {
+    const tauri = window.__TAURI__;
+    if (!tauri) {
+      return null;
+    }
+
+    return tauri.core?.invoke || tauri.tauri?.invoke || null;
   }
 
   public async checkSystemCodecs(): Promise<{
@@ -34,29 +71,20 @@ export class TauriAudioService {
     capabilities: Record<string, string>;
   }> {
     const audio = new Audio();
-    const formats = [
-      { name: 'MP3', mime: 'audio/mpeg', codecs: ['mp3'] },
-      { name: 'OGG', mime: 'audio/ogg', codecs: ['vorbis', 'opus'] },
-      { name: 'WAV', mime: 'audio/wav', codecs: ['pcm'] },
-      { name: 'AAC', mime: 'audio/aac', codecs: ['mp4a.40.2'] },
-      { name: 'FLAC', mime: 'audio/flac', codecs: ['flac'] },
-      { name: 'WEBM', mime: 'audio/webm', codecs: ['vorbis', 'opus'] },
-      { name: 'M4A', mime: 'audio/mp4', codecs: ['mp4a.40.2'] },
-    ];
 
     const supportedFormats: string[] = [];
     const missingCodecs: string[] = [];
     const capabilities: Record<string, string> = {};
 
-    for (const format of formats) {
+    for (const format of CODEC_FORMATS) {
       let bestSupport = '';
       let isSupported = false;
 
       // Test basic MIME type
       const basicSupport = audio.canPlayType(format.mime);
-      capabilities[format.name + '_basic'] = basicSupport;
+      capabilities[`${format.name}_basic`] = basicSupport;
 
-      if (basicSupport === 'probably' || basicSupport === 'maybe') {
+      if (isSupportedResult(basicSupport)) {
         bestSupport = basicSupport;
         isSupported = true;
       }
@@ -66,7 +94,7 @@ export class TauriAudioService {
         const codecSupport = audio.canPlayType(
           `${format.mime}; codecs="${codec}"`
         );
-        capabilities[format.name + '_' + codec] = codecSupport;
+        capabilities[`${format.name}_${codec}`] = codecSupport;
 
         if (codecSupport === 'probably') {
           bestSupport = 'probably';
@@ -90,8 +118,7 @@ export class TauriAudioService {
     if (this.getEnvironment() === 'tauri' && window.__TAURI__) {
       try {
         // Try Tauri v2 API first, fallback to v1
-        const invoke =
-          window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke;
+        const invoke = this.getTauriInvoke();
 
         if (!invoke) {
           throw new Error('Tauri invoke not available');
@@ -108,14 +135,7 @@ export class TauriAudioService {
           const audioInfo = systemAudioInfo as { supportedFormats?: string[] };
           if (audioInfo.supportedFormats) {
             audioInfo.supportedFormats.forEach((format: string) => {
-              if (!supportedFormats.includes(format)) {
-                supportedFormats.push(format);
-                // Remove from missing codecs if it was there
-                const missingIndex = missingCodecs.indexOf(format);
-                if (missingIndex > -1) {
-                  missingCodecs.splice(missingIndex, 1);
-                }
-              }
+              mergeSupportedFormat(format, supportedFormats, missingCodecs);
             });
           }
         }
@@ -143,10 +163,7 @@ export class TauriAudioService {
     }
 
     try {
-      // Try Tauri v2 API first, fallback to v1
-      const invoke =
-        window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke;
-
+      const invoke = this.getTauriInvoke();
       if (!invoke) {
         throw new Error('Tauri invoke not available');
       }
@@ -175,10 +192,7 @@ export class TauriAudioService {
     }
 
     try {
-      // Try Tauri v2 API first, fallback to v1
-      const invoke =
-        window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke;
-
+      const invoke = this.getTauriInvoke();
       if (!invoke) {
         throw new Error('Tauri invoke not available');
       }

@@ -1,5 +1,8 @@
 name: PR Validation
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches: [ main, develop ]
@@ -7,10 +10,13 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
       
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -24,7 +30,8 @@ jobs:
     - name: Check for package.json changes
       id: package-check
       run: |
-        if git diff --name-only origin/main...HEAD | grep -q "package.json"; then
+        set -euo pipefail
+        if git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" | grep -q '^package.json$'; then
           echo "package_changed=true" >> $GITHUB_OUTPUT
         else
           echo "package_changed=false" >> $GITHUB_OUTPUT
@@ -33,10 +40,9 @@ jobs:
     - name: Validate version bump
       if: steps.package-check.outputs.package_changed == 'true'
       run: |
+        set -euo pipefail
         CURRENT_VERSION=$(node -p "require('./package.json').version")
-        git checkout origin/main -- package.json
-        MAIN_VERSION=$(node -p "require('./package.json').version")
-        git checkout HEAD -- package.json
+        MAIN_VERSION=$(git show "${{ github.event.pull_request.base.sha }}:package.json" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).version));")
         
         echo "Main branch version: $MAIN_VERSION"
         echo "PR version: $CURRENT_VERSION"
@@ -47,24 +53,28 @@ jobs:
         else
           echo "✅ Version properly bumped: $MAIN_VERSION → $CURRENT_VERSION"
         fi
-        
+
+    - name: Lint quality gate
+      run: npm run lint
+         
     - name: Build project
       run: npm run build
       
     - name: Run tests
-      run: npm test
+      run: npm test -- --runInBand
       
     - name: Check package size
       run: |
-        npm pack
-        PACKAGE_SIZE=$(du -sh *.tgz | cut -f1)
-        echo "📦 Package size: $PACKAGE_SIZE"
+        set -euo pipefail
+        PACKAGE_FILE=$(npm pack --silent)
+        PACKAGE_SIZE_BYTES=$(wc -c < "$PACKAGE_FILE")
+        echo "📦 Package size (bytes): $PACKAGE_SIZE_BYTES"
+        rm -f "$PACKAGE_FILE"
         
     - name: Validate exports
       run: |
         echo "Validating package exports..."
         node -e "
-          const pkg = require('./package.json');
           const fs = require('fs');
           
           // Check main exports exist

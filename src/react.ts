@@ -1,10 +1,49 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   AudioProxyClient,
   TauriAudioService,
   ElectronAudioService,
 } from './index';
 import { AudioProxyOptions, StreamInfo, Environment } from './types';
+
+type DesktopAudioService = TauriAudioService | ElectronAudioService;
+
+const WEB_AUDIO_MIME_TYPES: Record<string, string> = {
+  MP3: 'audio/mpeg',
+  OGG: 'audio/ogg',
+  WAV: 'audio/wav',
+  AAC: 'audio/aac',
+  FLAC: 'audio/flac',
+  WEBM: 'audio/webm',
+  M4A: 'audio/mp4',
+};
+
+const WEB_AUDIO_FORMATS = Object.keys(WEB_AUDIO_MIME_TYPES);
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function createDesktopAudioService(
+  environment: Environment
+): DesktopAudioService | null {
+  if (environment === 'tauri') {
+    return new TauriAudioService();
+  }
+  if (environment === 'electron') {
+    return new ElectronAudioService();
+  }
+  return null;
+}
 
 /**
  * Hook for managing audio proxy client with automatic URL processing
@@ -16,12 +55,9 @@ export function useAudioProxy(url: string | null, options?: AudioProxyOptions) {
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
 
   // Memoize options with deep comparison to prevent unnecessary client recreations
-  const optionsRef = useRef(options);
-  const optionsJson = JSON.stringify(options);
+  const optionsJson = JSON.stringify(options ?? {});
   const stableOptions = useMemo(() => {
-    const newOptions = JSON.parse(optionsJson);
-    optionsRef.current = newOptions;
-    return newOptions;
+    return JSON.parse(optionsJson) as AudioProxyOptions;
   }, [optionsJson]);
 
   // Memoize client to prevent unnecessary recreations
@@ -46,9 +82,7 @@ export function useAudioProxy(url: string | null, options?: AudioProxyOptions) {
         const playableUrl = await client.getPlayableUrl(inputUrl);
         setAudioUrl(playableUrl);
       } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : 'Unknown error';
-        setError(errorMessage);
+        setError(getErrorMessage(err));
       } finally {
         setIsLoading(false);
       }
@@ -118,13 +152,7 @@ export function useAudioCapabilities() {
 
     try {
       const environment = client.getEnvironment();
-      let service: TauriAudioService | ElectronAudioService | null = null;
-
-      if (environment === 'tauri') {
-        service = new TauriAudioService();
-      } else if (environment === 'electron') {
-        service = new ElectronAudioService();
-      }
+      const service = createDesktopAudioService(environment);
 
       if (service) {
         // Get codec capabilities
@@ -152,33 +180,21 @@ export function useAudioCapabilities() {
       } else {
         // Basic web environment capabilities
         const audio = new Audio();
-        const formats = ['MP3', 'OGG', 'WAV', 'AAC', 'FLAC', 'WEBM', 'M4A'];
-        const supportedFormats = formats.filter(format => {
-          const mimeTypes = {
-            MP3: 'audio/mpeg',
-            OGG: 'audio/ogg',
-            WAV: 'audio/wav',
-            AAC: 'audio/aac',
-            FLAC: 'audio/flac',
-            WEBM: 'audio/webm',
-            M4A: 'audio/mp4',
-          };
-          return (
-            audio.canPlayType(mimeTypes[format as keyof typeof mimeTypes]) !==
-            ''
-          );
-        });
+        const supportedFormats = WEB_AUDIO_FORMATS.filter(
+          format => audio.canPlayType(WEB_AUDIO_MIME_TYPES[format]) !== ''
+        );
 
         setCapabilities({
           supportedFormats,
-          missingCodecs: formats.filter(f => !supportedFormats.includes(f)),
+          missingCodecs: WEB_AUDIO_FORMATS.filter(
+            format => !supportedFormats.includes(format)
+          ),
           capabilities: {},
           environment,
         });
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(errorMessage);
+      setError(getErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -216,10 +232,9 @@ export function useProxyStatus(options?: AudioProxyOptions) {
     try {
       const available = await client.isProxyAvailable();
       setIsAvailable(available);
-      setProxyUrl(client['options']?.proxyUrl || 'http://localhost:3002');
+      setProxyUrl(client.getProxyUrl());
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(errorMessage);
+      setError(getErrorMessage(err));
       setIsAvailable(false);
     } finally {
       setIsChecking(false);
@@ -271,13 +286,7 @@ export function useAudioMetadata(filePath: string | null) {
 
       try {
         const environment = client.getEnvironment();
-        let service: TauriAudioService | ElectronAudioService | null = null;
-
-        if (environment === 'tauri') {
-          service = new TauriAudioService();
-        } else if (environment === 'electron') {
-          service = new ElectronAudioService();
-        }
+        const service = createDesktopAudioService(environment);
 
         if (service) {
           const result = await service.getAudioMetadata(filePath);
@@ -288,9 +297,7 @@ export function useAudioMetadata(filePath: string | null) {
           );
         }
       } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : 'Unknown error';
-        setError(errorMessage);
+        setError(getErrorMessage(err));
       } finally {
         setIsLoading(false);
       }
@@ -309,7 +316,6 @@ export function useAudioMetadata(filePath: string | null) {
 /**
  * Context provider for global audio proxy configuration
  */
-import { createContext, useContext, ReactNode, createElement } from 'react';
 
 interface AudioProxyContextValue {
   defaultOptions: AudioProxyOptions;
