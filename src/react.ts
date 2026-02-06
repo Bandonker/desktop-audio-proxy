@@ -314,6 +314,30 @@ export function useAudioMetadata(filePath: string | null) {
 }
 
 /**
+ * Simple hook for getting a playable/proxied URL for audio or video
+ */
+export function useAudioUrl(url: string | null, options?: AudioProxyOptions) {
+  const { audioUrl, isLoading, error, streamInfo, retry, client } =
+    useAudioProxy(url, options);
+
+  const normalizedError = useMemo<Error | null>(() => {
+    if (!error) {
+      return null;
+    }
+    return new Error(error);
+  }, [error]);
+
+  return {
+    playableUrl: audioUrl,
+    loading: isLoading,
+    error: normalizedError,
+    streamInfo,
+    retry,
+    client,
+  };
+}
+
+/**
  * Context provider for global audio proxy configuration
  */
 

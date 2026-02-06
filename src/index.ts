@@ -8,5 +8,10 @@ export {
   disableDebug,
   AudioProxyDebugger,
 } from './debugger';
+export {
+  AudioProxyServer,
+  createProxyServer,
+  startProxyServer,
+} from './server-impl';
 export * from './types';
 export { createAudioClient } from './client';
