@@ -22,6 +22,8 @@
             <p class="subtitle">Eliminates CORS issues for audio streaming in desktop apps</p>
             <div class="nav-links" style="text-align: center; margin-top: 15px;">
                 <a href="telemetry-dashboard.html" style="color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.2); border-radius: 6px; margin: 0 8px; transition: background 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">🎛️ Telemetry Dashboard →</a>
+                <a href="/examples/react-example.tsx" target="_blank" rel="noopener" style="color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.14); border-radius: 6px; margin: 0 8px; transition: background 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.14)'">🎬 React Hooks Example →</a>
+                <a href="react-player.html" target="_blank" rel="noopener" style="color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.14); border-radius: 6px; margin: 0 8px; transition: background 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.14)'">▶️ Run React Demo →</a>
             </div>
         </header>
 
@@ -67,7 +69,7 @@
                             <li>• Bypass DRM or encrypted content</li>
                             <li>• Download copyrighted material</li>
                             <li>• Work with streaming platform APIs</li>
-                            <li>• Handle video files (use direct audio URLs only)</li>
+                            <li>• Decode or transcode media codecs beyond what your browser/system supports</li>
                         </ul>
                     </div>
                 </div>
@@ -182,7 +184,11 @@ audioElement.src = streamUrl;</code></pre>
                     <pre><code>import { ElectronAudioService } from 'desktop-audio-proxy';
 
 const audioService = new ElectronAudioService({
-  enableTranscoding: true
+  audioOptions: {
+    proxyServerConfig: {
+      enableLogging: true
+    }
+  }
 });
 
 const streamUrl = await audioService.getStreamableUrl(originalUrl);</code></pre>

@@ -12,6 +12,7 @@
  * import React, { useState } from 'react';
  * import { 
  *   useAudioProxy, 
+ *   useAudioUrl,
  *   useAudioCapabilities, 
  *   useProxyStatus, 
  *   useAudioMetadata,
@@ -23,12 +24,38 @@
 declare const React: any;
 declare const useState: any;
 declare const useAudioProxy: any;
+declare const useAudioUrl: any;
 declare const useAudioCapabilities: any;
 declare const useProxyStatus: any;
 declare const useAudioMetadata: any;
 declare const AudioProxyProvider: any;
 
-// Basic usage example
+// Simplified usage example using useAudioUrl
+function SimpleAudioPlayer() {
+  const [url, setUrl] = useState('https://example.com/audio.mp3');
+  const { playableUrl, loading, error, retry } = useAudioUrl(url);
+
+  return React.createElement('div', null,
+    React.createElement('h2', null, 'Simple Audio Player'),
+    React.createElement('input', {
+      value: url,
+      onChange: (e: any) => setUrl(e.target.value),
+      placeholder: 'Enter audio URL...'
+    }),
+    
+    loading && React.createElement('p', null, 'Loading...'),
+    error && React.createElement('div', null,
+      React.createElement('p', null, 'Error: ', error.message),
+      React.createElement('button', { onClick: retry }, 'Retry')
+    ),
+    
+    playableUrl && React.createElement('div', null,
+      React.createElement('audio', { controls: true, src: playableUrl })
+    )
+  );
+}
+
+// Basic usage example using useAudioProxy
 function BasicAudioPlayer() {
   const [url, setUrl] = useState('https://example.com/audio.mp3');
   const { audioUrl, isLoading, error, streamInfo, retry } = useAudioProxy(url);

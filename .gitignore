@@ -72,3 +72,10 @@ discord-engagement-plan.md
 github-responses-ready-to-post.md
 phase1-response-templates.md
 CLAUDE.md
+
+# Local maintenance artifacts
+code-review-report.md
+todo.md
+
+# Exported patch diffs (generated artifacts)
+patches/

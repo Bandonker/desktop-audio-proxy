@@ -4,6 +4,51 @@ import { ElectronAudioService } from '../electron-service';
 // Mock the AudioProxyClient
 jest.mock('../client');
 
+type InternalAudioClient = {
+  getPlayableUrl: jest.Mock;
+  canPlayUrl: jest.Mock;
+  getEnvironment: jest.Mock;
+  isProxyAvailable: jest.Mock;
+};
+
+type TestWindow = {
+  __TAURI__?: {
+    tauri?: {
+      invoke: jest.Mock;
+    };
+    core?: {
+      invoke: jest.Mock;
+    };
+  };
+  electronAPI?: {
+    getSystemAudioInfo?: jest.Mock;
+    getAudioMetadata?: jest.Mock;
+    getAudioDevices?: jest.Mock;
+    getSystemAudioSettings?: jest.Mock;
+  };
+};
+
+type TestGlobalState = {
+  window: TestWindow;
+  process: {
+    versions?: {
+      electron?: string;
+      chrome?: string;
+    };
+  };
+};
+
+function getTestGlobalState(): TestGlobalState {
+  return globalThis as unknown as TestGlobalState;
+}
+
+function getAudioClient(
+  service: TauriAudioService | ElectronAudioService
+): InternalAudioClient {
+  return (service as unknown as { audioClient: InternalAudioClient })
+    .audioClient;
+}
+
 describe('Audio Services', () => {
   describe('TauriAudioService', () => {
     let service: TauriAudioService;
@@ -35,7 +80,7 @@ describe('Audio Services', () => {
     it('should handle legacy options format', () => {
       const legacyService = new TauriAudioService({
         proxyUrl: 'http://legacy:3001',
-      } as any);
+      });
       expect(legacyService).toBeDefined();
     });
 
@@ -47,7 +92,7 @@ describe('Audio Services', () => {
 
         // Mock the client method
         const mockGetPlayableUrl = jest.fn().mockResolvedValue(expectedUrl);
-        (service as any).audioClient.getPlayableUrl = mockGetPlayableUrl;
+        getAudioClient(service).getPlayableUrl = mockGetPlayableUrl;
 
         const result = await service.getStreamableUrl(mockUrl);
 
@@ -61,7 +106,7 @@ describe('Audio Services', () => {
         const mockGetPlayableUrl = jest
           .fn()
           .mockRejectedValue(new Error('Network error'));
-        (service as any).audioClient.getPlayableUrl = mockGetPlayableUrl;
+        getAudioClient(service).getPlayableUrl = mockGetPlayableUrl;
 
         await expect(service.getStreamableUrl(mockUrl)).rejects.toThrow(
           'Network error'
@@ -74,7 +119,7 @@ describe('Audio Services', () => {
         const mockUrl = 'https://example.com/audio.mp3';
 
         const mockCanPlayUrl = jest.fn().mockResolvedValue(true);
-        (service as any).audioClient.canPlayUrl = mockCanPlayUrl;
+        getAudioClient(service).canPlayUrl = mockCanPlayUrl;
 
         const result = await service.canPlayStream(mockUrl);
 
@@ -86,7 +131,7 @@ describe('Audio Services', () => {
     describe('Environment detection', () => {
       it('should expose environment detection', () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const env = service.getEnvironment();
 
@@ -98,7 +143,7 @@ describe('Audio Services', () => {
     describe('isProxyAvailable', () => {
       it('should check proxy availability', async () => {
         const mockIsProxyAvailable = jest.fn().mockResolvedValue(true);
-        (service as any).audioClient.isProxyAvailable = mockIsProxyAvailable;
+        getAudioClient(service).isProxyAvailable = mockIsProxyAvailable;
 
         const isAvailable = await service.isProxyAvailable();
 
@@ -148,10 +193,10 @@ describe('Audio Services', () => {
       it('should handle Tauri environment with system audio info', async () => {
         // Mock Tauri environment
         const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         // Mock Tauri API
-        (global as any).window = {
+        getTestGlobalState().window = {
           __TAURI__: {
             tauri: {
               invoke: jest.fn().mockResolvedValue({
@@ -172,10 +217,10 @@ describe('Audio Services', () => {
       it('should handle Tauri environment without system audio info', async () => {
         // Mock Tauri environment
         const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         // Mock Tauri API that returns null (caught error case)
-        (global as any).window = {
+        getTestGlobalState().window = {
           __TAURI__: {
             tauri: {
               invoke: jest
@@ -194,7 +239,7 @@ describe('Audio Services', () => {
       it('should handle non-Tauri environment', async () => {
         // Mock non-Tauri environment
         const mockGetEnvironment = jest.fn().mockReturnValue('web');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const codecInfo = await service.checkSystemCodecs();
 
@@ -206,7 +251,7 @@ describe('Audio Services', () => {
     describe('getAudioMetadata', () => {
       it('should return null for non-Tauri environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('web');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const metadata = await service.getAudioMetadata('/path/to/audio.mp3');
 
@@ -215,9 +260,9 @@ describe('Audio Services', () => {
 
       it('should return null when Tauri API is not available', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {};
+        getTestGlobalState().window = {};
 
         const metadata = await service.getAudioMetadata('/path/to/audio.mp3');
 
@@ -226,7 +271,7 @@ describe('Audio Services', () => {
 
       it('should return metadata for Tauri environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const mockMetadata = {
           duration: 180.5,
@@ -236,7 +281,7 @@ describe('Audio Services', () => {
           format: 'MP3',
         };
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           __TAURI__: {
             tauri: {
               invoke: jest.fn().mockResolvedValue(mockMetadata),
@@ -248,7 +293,7 @@ describe('Audio Services', () => {
 
         expect(metadata).toEqual(mockMetadata);
         expect(
-          (global as any).window.__TAURI__.tauri.invoke
+          getTestGlobalState().window.__TAURI__!.tauri!.invoke
         ).toHaveBeenCalledWith('get_audio_metadata', {
           path: '/path/to/audio.mp3',
         });
@@ -256,9 +301,9 @@ describe('Audio Services', () => {
 
       it('should handle errors gracefully', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           __TAURI__: {
             tauri: {
               invoke: jest.fn().mockRejectedValue(new Error('File not found')),
@@ -283,7 +328,7 @@ describe('Audio Services', () => {
     describe('getAudioDevices', () => {
       it('should return null for non-Tauri environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('web');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const devices = await service.getAudioDevices();
 
@@ -292,9 +337,9 @@ describe('Audio Services', () => {
 
       it('should return null when Tauri API is not available', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {};
+        getTestGlobalState().window = {};
 
         const devices = await service.getAudioDevices();
 
@@ -303,7 +348,7 @@ describe('Audio Services', () => {
 
       it('should return audio devices for Tauri environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const mockDevices = {
           inputDevices: [
@@ -316,7 +361,7 @@ describe('Audio Services', () => {
           ],
         };
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           __TAURI__: {
             tauri: {
               invoke: jest.fn().mockResolvedValue(mockDevices),
@@ -328,15 +373,15 @@ describe('Audio Services', () => {
 
         expect(devices).toEqual(mockDevices);
         expect(
-          (global as any).window.__TAURI__.tauri.invoke
+          getTestGlobalState().window.__TAURI__!.tauri!.invoke
         ).toHaveBeenCalledWith('get_audio_devices');
       });
 
       it('should handle errors gracefully', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           __TAURI__: {
             tauri: {
               invoke: jest
@@ -403,7 +448,7 @@ describe('Audio Services', () => {
           'http://localhost:3001/stream?url=' + encodeURIComponent(mockUrl);
 
         const mockGetPlayableUrl = jest.fn().mockResolvedValue(expectedUrl);
-        (service as any).audioClient.getPlayableUrl = mockGetPlayableUrl;
+        getAudioClient(service).getPlayableUrl = mockGetPlayableUrl;
 
         const result = await service.getStreamableUrl(mockUrl);
 
@@ -449,10 +494,12 @@ describe('Audio Services', () => {
       it('should include electron version info when available', async () => {
         // Mock the getEnvironment method to return 'electron'
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).getEnvironment = mockGetEnvironment;
+        jest
+          .spyOn(service, 'getEnvironment')
+          .mockImplementation(mockGetEnvironment);
 
         // Mock process.versions for electron
-        (global as any).process = {
+        getTestGlobalState().process = {
           versions: {
             electron: '25.0.0',
             chrome: '114.0.0',
@@ -474,7 +521,7 @@ describe('Audio Services', () => {
         const mockUrl = 'https://example.com/audio.mp3';
 
         const mockCanPlayUrl = jest.fn().mockResolvedValue(true);
-        (service as any).audioClient.canPlayUrl = mockCanPlayUrl;
+        getAudioClient(service).canPlayUrl = mockCanPlayUrl;
 
         const result = await service.canPlayStream(mockUrl);
 
@@ -486,7 +533,7 @@ describe('Audio Services', () => {
     describe('Environment detection', () => {
       it('should expose environment detection', () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const env = service.getEnvironment();
 
@@ -498,7 +545,7 @@ describe('Audio Services', () => {
     describe('isProxyAvailable', () => {
       it('should check proxy availability', async () => {
         const mockIsProxyAvailable = jest.fn().mockResolvedValue(true);
-        (service as any).audioClient.isProxyAvailable = mockIsProxyAvailable;
+        getAudioClient(service).isProxyAvailable = mockIsProxyAvailable;
 
         const isAvailable = await service.isProxyAvailable();
 
@@ -511,10 +558,10 @@ describe('Audio Services', () => {
       it('should include system info when electronAPI is available', async () => {
         // Mock Electron environment
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         // Mock electronAPI
-        (global as any).window = {
+        getTestGlobalState().window = {
           electronAPI: {
             getSystemAudioInfo: jest.fn().mockResolvedValue({
               supportedFormats: ['FLAC', 'OPUS'],
@@ -533,10 +580,10 @@ describe('Audio Services', () => {
       it('should handle electronAPI errors gracefully', async () => {
         // Mock Electron environment
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         // Mock electronAPI that fails
-        (global as any).window = {
+        getTestGlobalState().window = {
           electronAPI: {
             getSystemAudioInfo: jest
               .fn()
@@ -560,10 +607,10 @@ describe('Audio Services', () => {
       it('should handle missing electronAPI gracefully', async () => {
         // Mock Electron environment
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         // No electronAPI available
-        (global as any).window = {};
+        getTestGlobalState().window = {};
 
         const codecInfo = await service.checkSystemCodecs();
 
@@ -576,7 +623,7 @@ describe('Audio Services', () => {
       it('should handle non-electron environment', async () => {
         // Mock non-electron environment
         const mockGetEnvironment = jest.fn().mockReturnValue('web');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const codecInfo = await service.checkSystemCodecs();
 
@@ -588,7 +635,7 @@ describe('Audio Services', () => {
     describe('getAudioMetadata', () => {
       it('should return null for non-Electron environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('web');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const metadata = await service.getAudioMetadata('/path/to/audio.mp3');
 
@@ -597,9 +644,9 @@ describe('Audio Services', () => {
 
       it('should return null when electronAPI is not available', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {};
+        getTestGlobalState().window = {};
 
         const metadata = await service.getAudioMetadata('/path/to/audio.mp3');
 
@@ -608,7 +655,7 @@ describe('Audio Services', () => {
 
       it('should return metadata for Electron environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const mockMetadata = {
           duration: 240.5,
@@ -618,7 +665,7 @@ describe('Audio Services', () => {
           format: 'FLAC',
         };
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           electronAPI: {
             getAudioMetadata: jest.fn().mockResolvedValue(mockMetadata),
           },
@@ -628,15 +675,15 @@ describe('Audio Services', () => {
 
         expect(metadata).toEqual(mockMetadata);
         expect(
-          (global as any).window.electronAPI.getAudioMetadata
+          getTestGlobalState().window.electronAPI!.getAudioMetadata
         ).toHaveBeenCalledWith('/path/to/audio.flac');
       });
 
       it('should handle errors gracefully', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           electronAPI: {
             getAudioMetadata: jest
               .fn()
@@ -663,7 +710,7 @@ describe('Audio Services', () => {
     describe('getAudioDevices', () => {
       it('should return null for non-Electron environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('web');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const devices = await service.getAudioDevices();
 
@@ -672,9 +719,9 @@ describe('Audio Services', () => {
 
       it('should return null when electronAPI is not available', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {};
+        getTestGlobalState().window = {};
 
         const devices = await service.getAudioDevices();
 
@@ -683,7 +730,7 @@ describe('Audio Services', () => {
 
       it('should return audio devices for Electron environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const mockDevices = {
           inputDevices: [
@@ -696,7 +743,7 @@ describe('Audio Services', () => {
           ],
         };
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           electronAPI: {
             getAudioDevices: jest.fn().mockResolvedValue(mockDevices),
           },
@@ -706,15 +753,15 @@ describe('Audio Services', () => {
 
         expect(devices).toEqual(mockDevices);
         expect(
-          (global as any).window.electronAPI.getAudioDevices
+          getTestGlobalState().window.electronAPI!.getAudioDevices
         ).toHaveBeenCalled();
       });
 
       it('should handle errors gracefully', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           electronAPI: {
             getAudioDevices: jest
               .fn()
@@ -739,7 +786,7 @@ describe('Audio Services', () => {
     describe('getSystemAudioSettings', () => {
       it('should return null for non-Electron environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('web');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const settings = await service.getSystemAudioSettings();
 
@@ -748,9 +795,9 @@ describe('Audio Services', () => {
 
       it('should return null when electronAPI is not available', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {};
+        getTestGlobalState().window = {};
 
         const settings = await service.getSystemAudioSettings();
 
@@ -759,7 +806,7 @@ describe('Audio Services', () => {
 
       it('should return system audio settings for Electron environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
         const mockSettings = {
           defaultInputDevice: 'input1',
@@ -767,7 +814,7 @@ describe('Audio Services', () => {
           masterVolume: 0.75,
         };
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           electronAPI: {
             getSystemAudioSettings: jest.fn().mockResolvedValue(mockSettings),
           },
@@ -777,15 +824,15 @@ describe('Audio Services', () => {
 
         expect(settings).toEqual(mockSettings);
         expect(
-          (global as any).window.electronAPI.getSystemAudioSettings
+          getTestGlobalState().window.electronAPI!.getSystemAudioSettings
         ).toHaveBeenCalled();
       });
 
       it('should handle errors gracefully', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('electron');
-        (service as any).audioClient.getEnvironment = mockGetEnvironment;
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
 
-        (global as any).window = {
+        getTestGlobalState().window = {
           electronAPI: {
             getSystemAudioSettings: jest
               .fn()

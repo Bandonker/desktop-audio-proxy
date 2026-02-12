@@ -1,18 +1,37 @@
 // Jest setup file
 // Add any global test setup here
 
+type TestWindowLocation = {
+  hostname: string;
+  protocol: string;
+  port: string;
+};
+
+type TestGlobal = {
+  window: {
+    location: TestWindowLocation;
+  };
+  process: {
+    versions?: Record<string, string>;
+    cwd?: () => string;
+    uptime?: () => number;
+  };
+};
+
+const testGlobal = globalThis as unknown as TestGlobal;
+
 // Mock browser globals for testing
-(global as any).window = {
+testGlobal.window = {
   location: {
     hostname: 'localhost',
     protocol: 'http:',
-    port: '3000'
-  }
+    port: '3000',
+  },
 };
 
 // Mock process for testing - preserve existing process functions
 if (typeof process === 'undefined') {
-  (global as any).process = {
+  testGlobal.process = {
     versions: {},
     cwd: () => '/',
     uptime: () => 0,
@@ -20,7 +39,10 @@ if (typeof process === 'undefined') {
 } else {
   // Keep existing process but ensure versions exists
   if (!process.versions) {
-    (process as any).versions = {};
+    Object.defineProperty(process, 'versions', {
+      value: {},
+      configurable: true,
+    });
   }
 }
 
@@ -40,8 +62,10 @@ global.Audio = jest.fn().mockImplementation(() => ({
   currentTime: 0,
   duration: 0,
   paused: true,
-  ended: false
+  ended: false,
 }));
+
+const suppressConsoleOutput = () => undefined;
 
 // Only reset mock call history, not implementations
 beforeEach(() => {
@@ -49,4 +73,13 @@ beforeEach(() => {
   mockFetch.mockClear();
   // Reset Audio mock calls
   (global.Audio as jest.Mock).mockClear();
+
+  // Keep test output quiet while preserving call assertions.
+  jest.spyOn(console, 'log').mockImplementation(suppressConsoleOutput);
+  jest.spyOn(console, 'warn').mockImplementation(suppressConsoleOutput);
+  jest.spyOn(console, 'error').mockImplementation(suppressConsoleOutput);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
 });

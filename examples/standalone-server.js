@@ -4,6 +4,7 @@
  */
 
 import { startProxyServer } from '../dist/server.esm.js';
+import url from 'url';
 
 async function main() {
   console.log('Starting Desktop Audio Proxy Server...');
@@ -11,7 +12,7 @@ async function main() {
   try {
     const server = await startProxyServer({
       port: 3002,
-      host: 'localhost',
+      host: '0.0.0.0', // Listen on all interfaces (works for both IPv4 and IPv6)
       corsOrigins: '*',
       timeout: 60000,
       maxRedirects: 20,
@@ -23,7 +24,10 @@ async function main() {
     });
 
     console.log('Server started successfully!');
-    console.log('Proxy endpoint: http://localhost:3002/proxy?url=YOUR_AUDIO_URL');
+    console.log('Accessible via:');
+    console.log('  - http://localhost:3002/proxy?url=YOUR_AUDIO_URL');
+    console.log('  - http://127.0.0.1:3002/proxy?url=YOUR_AUDIO_URL');
+    console.log('  - http://[::1]:3002/proxy?url=YOUR_AUDIO_URL');
     console.log('Health check: http://localhost:3002/health');
     console.log('Stream info: http://localhost:3002/info?url=YOUR_AUDIO_URL');
     
@@ -46,7 +50,7 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && url.pathToFileURL(process.argv[1]).href === import.meta.url) {
   main();
 }
 

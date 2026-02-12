@@ -118,6 +118,33 @@ describe('AudioProxyClient', () => {
       const isAvailable = await client.isProxyAvailable();
       expect(isAvailable).toBe(false);
     });
+
+    it('should clear health-check timeout for successful checks', async () => {
+      const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ status: 'healthy' }),
+      } as Response);
+
+      const isAvailable = await client.isProxyAvailable();
+
+      expect(isAvailable).toBe(true);
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+      clearTimeoutSpy.mockRestore();
+    });
+
+    it('should clear health-check timeout when fetch throws', async () => {
+      const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const isAvailable = await client.isProxyAvailable();
+
+      expect(isAvailable).toBe(false);
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+      clearTimeoutSpy.mockRestore();
+    });
   });
 
   describe('URL Processing', () => {
@@ -180,6 +207,14 @@ describe('AudioProxyClient', () => {
 
       expect(result).toBe(fileUrl);
       // No fetch calls should be made for local files
+    });
+
+    it('should handle Windows local paths directly', async () => {
+      const fileUrl = 'C:\\Music\\sample.mp3';
+      const result = await client.getPlayableUrl(fileUrl);
+
+      expect(result).toBe(fileUrl);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('should handle data: URLs by falling back to original', async () => {

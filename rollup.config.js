@@ -38,7 +38,7 @@ export default [
         }
       })
     ],
-    external: ['axios', 'react', 'vue']
+    external: ['axios', 'react', 'vue', 'express', 'cors', ...nodeBuiltins]
   },
   // Main entry - Browser-safe CommonJS build
   {
@@ -65,7 +65,7 @@ export default [
         }
       })
     ],
-    external: ['axios', 'react', 'vue']
+    external: ['axios', 'react', 'vue', 'express', 'cors', ...nodeBuiltins]
   },
   // Browser entry - ES module
   {
@@ -145,7 +145,7 @@ export default [
         declarationDir: './dist'
       })
     ],
-    external: ['axios', 'express', 'cors', 'stream', 'net', 'react', 'vue']
+    external: ['axios', 'express', 'cors', ...nodeBuiltins, 'react', 'vue']
   },
   // Server entry - CommonJS
   {
@@ -171,7 +171,7 @@ export default [
         }
       })
     ],
-    external: ['axios', 'express', 'cors', 'stream', 'net', 'react', 'vue']
+    external: ['axios', 'express', 'cors', ...nodeBuiltins, 'react', 'vue']
   },
   // Legacy server build (for compatibility)
   {
@@ -197,7 +197,7 @@ export default [
         }
       })
     ],
-    external: ['axios', 'express', 'cors', 'stream', 'net', 'react', 'vue']
+    external: ['axios', 'express', 'cors', ...nodeBuiltins, 'react', 'vue']
   },
   // React hooks - ES module
   {
@@ -218,7 +218,7 @@ export default [
         declarationDir: './dist'
       })
     ],
-    external: ['react', 'axios']
+    external: ['react', 'axios', 'express', 'cors', ...nodeBuiltins]
   },
   // React hooks - CommonJS
   {
@@ -245,7 +245,7 @@ export default [
         }
       })
     ],
-    external: ['react', 'axios']
+    external: ['react', 'axios', 'express', 'cors', ...nodeBuiltins]
   },
   // Vue composables - ES module
   {
@@ -266,7 +266,7 @@ export default [
         declarationDir: './dist'
       })
     ],
-    external: ['vue', 'axios']
+    external: ['vue', 'axios', 'express', 'cors', ...nodeBuiltins]
   },
   // Vue composables - CommonJS
   {
@@ -293,6 +293,6 @@ export default [
         }
       })
     ],
-    external: ['vue', 'axios']
+    external: ['vue', 'axios', 'express', 'cors', ...nodeBuiltins]
   }
 ];

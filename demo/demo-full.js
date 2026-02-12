@@ -3,6 +3,19 @@
 
 import { createAudioClient } from '../dist/browser.esm.js';
 
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getErrorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
+
 class DesktopAudioProxyDemo {
     constructor() {
         this.audioClient = null;
@@ -104,7 +117,7 @@ class DesktopAudioProxyDemo {
             retryDelay: 1000,
             
             // Proxy server configuration
-            proxyConfig: {
+            proxyServerConfig: {
                 corsOrigins: '*',
                 timeout: 60000,
                 maxRedirects: 20,
@@ -355,19 +368,25 @@ class DesktopAudioProxyDemo {
         // Add version info to the UI
         const environmentElement = document.getElementById('environment');
         if (environmentElement && environmentElement.parentNode) {
+            const safeVersion = escapeHtml(versionInfo.version || 'unknown');
+            const safeFeatures = versionInfo.features.map(feature => escapeHtml(feature));
+            const safeMultipleVersionsWarning = versionInfo.multipleVersionsWarning
+                ? escapeHtml(versionInfo.multipleVersionsWarning)
+                : '';
+            const safeUpgradeMessage = escapeHtml(versionInfo.upgradeRecommendation.message);
             const versionElement = document.createElement('div');
             versionElement.innerHTML = `
-                <strong>Library Version:</strong> ${versionInfo.version}<br>
+                <strong>Library Version:</strong> ${safeVersion}<br>
                 <strong>Enhanced Features:</strong> ${versionInfo.isEnhanced ? 'Available' : 'Not Available'}<br>
-                ${versionInfo.features.length > 0 ? 
-                    `<strong>Active Features:</strong> ${versionInfo.features.join(', ')}<br>` : ''
+                ${safeFeatures.length > 0 ? 
+                    `<strong>Active Features:</strong> ${safeFeatures.join(', ')}<br>` : ''
                 }
-                ${versionInfo.multipleVersionsWarning ? 
-                    `<div style="color: #c1666b; margin-top: 5px;"><strong>⚠️ ${versionInfo.multipleVersionsWarning}</strong></div>` : ''
+                ${safeMultipleVersionsWarning ? 
+                    `<div style="color: #c1666b; margin-top: 5px;"><strong>⚠️ ${safeMultipleVersionsWarning}</strong></div>` : ''
                 }
                 ${versionInfo.upgradeRecommendation.needed ? 
-                    `<div style="color: #c1666b; margin-top: 5px;"><strong>⚠️ ${versionInfo.upgradeRecommendation.message}</strong></div>` :
-                    `<div style="color: #a8a8a8; margin-top: 5px;"><strong>✅ ${versionInfo.upgradeRecommendation.message}</strong></div>`
+                    `<div style="color: #c1666b; margin-top: 5px;"><strong>⚠️ ${safeUpgradeMessage}</strong></div>` :
+                    `<div style="color: #a8a8a8; margin-top: 5px;"><strong>✅ ${safeUpgradeMessage}</strong></div>`
                 }
             `;
             versionElement.style.fontSize = '12px';
@@ -684,9 +703,10 @@ class DesktopAudioProxyDemo {
             resultContainer.classList.add('success');
             
             playerElement.src = url;
+            const safeUrl = escapeHtml(url);
             detailsElement.innerHTML = `
                 <strong>✅ Unexpected Success:</strong> This URL allows cross-origin access<br>
-                <strong>Original URL:</strong> <code>${url}</code><br>
+                <strong>Original URL:</strong> <code>${safeUrl}</code><br>
                 <strong>Result:</strong> Server has CORS headers or allows cross-origin access<br>
                 <strong>Note:</strong> This URL might not need the proxy, but most audio URLs do
             `;
@@ -704,23 +724,28 @@ class DesktopAudioProxyDemo {
             let errorType = 'Network/CORS Error';
             let errorExplanation = 'Server lacks CORS headers - browser blocks cross-origin access';
             
-            if (error.message.includes('CORS') || error.message.includes('cors')) {
+            const errorMessage = getErrorMessage(error);
+            if (errorMessage.includes('CORS') || errorMessage.includes('cors')) {
                 errorType = 'CORS Policy Violation';
                 errorExplanation = 'Server does not allow cross-origin requests from browsers';
-            } else if (error.message.includes('timeout') || error.message.includes('abort')) {
+            } else if (errorMessage.includes('timeout') || errorMessage.includes('abort')) {
                 errorType = 'Request Timeout/Blocked';
                 errorExplanation = 'Server may be blocking cross-origin requests or responding slowly';
-            } else if (error.message.includes('403') || error.message.includes('Forbidden')) {
+            } else if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
                 errorType = 'CORS Preflight Failed';
                 errorExplanation = 'Server rejected the CORS preflight request (OPTIONS method)';
             }
             
             errorElement.textContent = `${errorType} - This demonstrates why the proxy is needed!`;
+            const safeErrorType = escapeHtml(errorType);
+            const safeErrorMessage = escapeHtml(errorMessage);
+            const safeUrl = escapeHtml(url);
+            const safeErrorExplanation = escapeHtml(errorExplanation);
             detailsElement.innerHTML = `
-                <strong>❌ CORS Blocked (Expected):</strong> ${errorType}<br>
-                <strong>Error Details:</strong> ${error.message}<br>
-                <strong>Original URL:</strong> <code>${url}</code><br>
-                <strong>Why this failed:</strong> ${errorExplanation}<br>
+                <strong>❌ CORS Blocked (Expected):</strong> ${safeErrorType}<br>
+                <strong>Error Details:</strong> ${safeErrorMessage}<br>
+                <strong>Original URL:</strong> <code>${safeUrl}</code><br>
+                <strong>Why this failed:</strong> ${safeErrorExplanation}<br>
                 <strong>Solution:</strong> Use the proxy test below to see CORS bypass in action<br>
                 <strong>This demonstrates:</strong> Why Desktop Audio Proxy is needed for most audio URLs
             `;
@@ -789,16 +814,21 @@ class DesktopAudioProxyDemo {
             resultContainer.classList.add('success');
             
             successElement.textContent = 'CORS bypass successful via proxy server!';
+            const safePlayableUrl = escapeHtml(playableUrl);
+            const safeEnvironment = escapeHtml(this.environment ?? 'unknown');
+            const safeWorkingProxyUrl = escapeHtml(this.workingProxyUrl ?? 'unknown');
+            const safeRetryAttempts = escapeHtml(this.audioClient.options.retryAttempts);
+            const safeFallback = escapeHtml(this.audioClient.options.fallbackToOriginal);
             detailsElement.innerHTML = `
                 <strong>Library Method Used:</strong> <code>audioClient.getPlayableUrl()</code><br>
                 <strong>Proxied URL:</strong><br>
-                <code style="word-break: break-all; font-size: 11px;">${playableUrl}</code><br><br>
+                <code style="word-break: break-all; font-size: 11px;">${safePlayableUrl}</code><br><br>
                 <strong>Process:</strong> Original URL → Proxy Server → Browser (CORS bypassed)<br>
                 <strong>Library Features Active:</strong><br>
-                • Environment Detection: ${this.environment}<br>
-                • Proxy Server: ${this.workingProxyUrl}<br>
-                • Auto Retry: ${this.audioClient.options.retryAttempts} attempts<br>
-                • Fallback Enabled: ${this.audioClient.options.fallbackToOriginal}
+                • Environment Detection: ${safeEnvironment}<br>
+                • Proxy Server: ${safeWorkingProxyUrl}<br>
+                • Auto Retry: ${safeRetryAttempts} attempts<br>
+                • Fallback Enabled: ${safeFallback}
             `;
             
             // Set the working proxied URL
@@ -814,7 +844,8 @@ class DesktopAudioProxyDemo {
             resultContainer.classList.add('error');
             
             // Check if it's a non-audio content type issue
-            const isNonAudioContent = error.message.includes('text/html') || 
+            const errorMessage = getErrorMessage(error);
+            const isNonAudioContent = errorMessage.includes('text/html') || 
                                      url.includes('youtube.com') || 
                                      url.includes('spotify.com') || 
                                      url.includes('soundcloud.com');
@@ -829,22 +860,26 @@ class DesktopAudioProxyDemo {
                     <strong>Solution:</strong> Use direct audio file URLs only
                 `;
             } else if (!this.proxyServerAvailable) {
+                const safeErrorMessage = escapeHtml(errorMessage);
+                const safePort = escapeHtml(this.workingProxyUrl?.split(':')[2] || '3002');
                 detailsElement.innerHTML = `
-                    <strong>Error:</strong> ${error.message}<br><br>
+                    <strong>Error:</strong> ${safeErrorMessage}<br><br>
                     <strong>Issue:</strong> Proxy server is not available<br><br>
                     <strong>Solution:</strong><br>
                     • Start proxy server: <code>npm run proxy:start</code><br>
-                    • Check that port ${this.workingProxyUrl?.split(':')[2] || '3002'} is not blocked<br>
+                    • Check that port ${safePort} is not blocked<br>
                     • Restart the demo
                 `;
             } else {
+                const safeErrorMessage = escapeHtml(errorMessage);
+                const safeRetryAttempts = escapeHtml(this.audioClient.options.retryAttempts);
                 detailsElement.innerHTML = `
-                    <strong>Error:</strong> ${error.message}<br><br>
+                    <strong>Error:</strong> ${safeErrorMessage}<br><br>
                     <strong>Possible Issues:</strong><br>
                     • URL might be inaccessible or return 404<br>
                     • Server might not allow proxying<br>
                     • Audio format might not be supported<br><br>
-                    <strong>Library attempted:</strong> ${this.audioClient.options.retryAttempts} retries with proxy
+                    <strong>Library attempted:</strong> ${safeRetryAttempts} retries with proxy
                 `;
             }
         }
@@ -864,10 +899,12 @@ class DesktopAudioProxyDemo {
     
     showError(message, error = null) {
         const statusPanel = document.querySelector('.status-panel');
+        const safeMessage = escapeHtml(message);
+        const safeErrorMessage = error ? escapeHtml(getErrorMessage(error)) : '';
         statusPanel.innerHTML = `
             <h3>❌ Error</h3>
-            <div class="error-message">${message}</div>
-            ${error ? `<div class="error-details">${error.message}</div>` : ''}
+            <div class="error-message">${safeMessage}</div>
+            ${error ? `<div class="error-details">${safeErrorMessage}</div>` : ''}
         `;
         
         console.error('Demo Error:', message, error);

@@ -10,3 +10,8 @@ export {
 } from './debugger';
 export * from './types';
 export { createAudioClient } from './client';
+export {
+  AudioProxyServer,
+  createProxyServer,
+  startProxyServer,
+} from './server-impl';

@@ -2,7 +2,6 @@ import { AudioProxyClient } from './client';
 import { AudioServiceOptions } from './types';
 
 // Type declarations for Electron API
-/* eslint-disable no-unused-vars */
 interface ElectronAPI {
   getSystemAudioInfo?: () => Promise<{
     supportedFormats?: string[];
@@ -25,9 +24,36 @@ interface ElectronAPI {
     masterVolume?: number;
   }>;
 }
-/* eslint-enable no-unused-vars */
 
 // Extend the existing Window interface from client.ts - don't redeclare electronAPI
+
+const CODEC_FORMATS = [
+  { name: 'MP3', mime: 'audio/mpeg', codecs: ['mp3'] },
+  { name: 'OGG', mime: 'audio/ogg', codecs: ['vorbis', 'opus'] },
+  { name: 'WAV', mime: 'audio/wav', codecs: ['pcm'] },
+  { name: 'AAC', mime: 'audio/aac', codecs: ['mp4a.40.2'] },
+  { name: 'FLAC', mime: 'audio/flac', codecs: ['flac'] },
+  { name: 'WEBM', mime: 'audio/webm', codecs: ['vorbis', 'opus'] },
+  { name: 'M4A', mime: 'audio/mp4', codecs: ['mp4a.40.2'] },
+] as const;
+
+function isSupportedResult(result: string): boolean {
+  return result === 'probably' || result === 'maybe';
+}
+
+function mergeSupportedFormat(
+  format: string,
+  supportedFormats: string[],
+  missingCodecs: string[]
+): void {
+  if (!supportedFormats.includes(format)) {
+    supportedFormats.push(format);
+    const missingIndex = missingCodecs.indexOf(format);
+    if (missingIndex > -1) {
+      missingCodecs.splice(missingIndex, 1);
+    }
+  }
+}
 
 export class ElectronAudioService {
   private audioClient: AudioProxyClient;
@@ -39,11 +65,11 @@ export class ElectronAudioService {
   }
 
   public async getStreamableUrl(url: string): Promise<string> {
-    return await this.audioClient.getPlayableUrl(url);
+    return this.audioClient.getPlayableUrl(url);
   }
 
   public async canPlayStream(url: string) {
-    return await this.audioClient.canPlayUrl(url);
+    return this.audioClient.canPlayUrl(url);
   }
 
   public getEnvironment() {
@@ -51,7 +77,11 @@ export class ElectronAudioService {
   }
 
   public async isProxyAvailable(): Promise<boolean> {
-    return await this.audioClient.isProxyAvailable();
+    return this.audioClient.isProxyAvailable();
+  }
+
+  private getElectronAPI(): ElectronAPI | undefined {
+    return window.electronAPI as ElectronAPI | undefined;
   }
 
   public async checkSystemCodecs(): Promise<{
@@ -62,29 +92,20 @@ export class ElectronAudioService {
     chromiumVersion?: string;
   }> {
     const audio = new Audio();
-    const formats = [
-      { name: 'MP3', mime: 'audio/mpeg', codecs: ['mp3'] },
-      { name: 'OGG', mime: 'audio/ogg', codecs: ['vorbis', 'opus'] },
-      { name: 'WAV', mime: 'audio/wav', codecs: ['pcm'] },
-      { name: 'AAC', mime: 'audio/aac', codecs: ['mp4a.40.2'] },
-      { name: 'FLAC', mime: 'audio/flac', codecs: ['flac'] },
-      { name: 'WEBM', mime: 'audio/webm', codecs: ['vorbis', 'opus'] },
-      { name: 'M4A', mime: 'audio/mp4', codecs: ['mp4a.40.2'] },
-    ];
 
     const supportedFormats: string[] = [];
     const missingCodecs: string[] = [];
     const capabilities: Record<string, string> = {};
 
-    for (const format of formats) {
+    for (const format of CODEC_FORMATS) {
       let bestSupport = '';
       let isSupported = false;
 
       // Test basic MIME type
       const basicSupport = audio.canPlayType(format.mime);
-      capabilities[format.name + '_basic'] = basicSupport;
+      capabilities[`${format.name}_basic`] = basicSupport;
 
-      if (basicSupport === 'probably' || basicSupport === 'maybe') {
+      if (isSupportedResult(basicSupport)) {
         bestSupport = basicSupport;
         isSupported = true;
       }
@@ -94,7 +115,7 @@ export class ElectronAudioService {
         const codecSupport = audio.canPlayType(
           `${format.mime}; codecs="${codec}"`
         );
-        capabilities[format.name + '_' + codec] = codecSupport;
+        capabilities[`${format.name}_${codec}`] = codecSupport;
 
         if (codecSupport === 'probably') {
           bestSupport = 'probably';
@@ -125,13 +146,19 @@ export class ElectronAudioService {
     // Add Electron version info if available
     if (this.getEnvironment() === 'electron') {
       try {
-        if (typeof process !== 'undefined' && process.versions) {
-          result.electronVersion = process.versions.electron;
-          result.chromiumVersion = process.versions.chrome;
+        const processVersions = (
+          globalThis as {
+            process?: { versions?: { electron?: string; chrome?: string } };
+          }
+        ).process?.versions;
+
+        if (processVersions) {
+          result.electronVersion = processVersions.electron;
+          result.chromiumVersion = processVersions.chrome;
         }
 
         // Integrate with Electron main process for system codec detection
-        const electronAPI = window.electronAPI as ElectronAPI | undefined;
+        const electronAPI = this.getElectronAPI();
         if (electronAPI?.getSystemAudioInfo) {
           try {
             const systemAudioInfo = await electronAPI.getSystemAudioInfo();
@@ -142,14 +169,7 @@ export class ElectronAudioService {
               // Enhanced format support based on system capabilities
               if (systemAudioInfo.supportedFormats) {
                 systemAudioInfo.supportedFormats.forEach((format: string) => {
-                  if (!supportedFormats.includes(format)) {
-                    supportedFormats.push(format);
-                    // Remove from missing codecs if it was there
-                    const missingIndex = missingCodecs.indexOf(format);
-                    if (missingIndex > -1) {
-                      missingCodecs.splice(missingIndex, 1);
-                    }
-                  }
+                  mergeSupportedFormat(format, supportedFormats, missingCodecs);
                 });
               }
             }
@@ -179,7 +199,7 @@ export class ElectronAudioService {
     channels?: number;
     format?: string;
   } | null> {
-    const electronAPI = window.electronAPI as ElectronAPI | undefined;
+    const electronAPI = this.getElectronAPI();
     if (
       this.getEnvironment() !== 'electron' ||
       !electronAPI?.getAudioMetadata
@@ -203,7 +223,7 @@ export class ElectronAudioService {
     inputDevices: Array<{ id: string; name: string }>;
     outputDevices: Array<{ id: string; name: string }>;
   } | null> {
-    const electronAPI = window.electronAPI as ElectronAPI | undefined;
+    const electronAPI = this.getElectronAPI();
     if (this.getEnvironment() !== 'electron' || !electronAPI?.getAudioDevices) {
       return null;
     }
@@ -225,7 +245,7 @@ export class ElectronAudioService {
     defaultOutputDevice?: string;
     masterVolume?: number;
   } | null> {
-    const electronAPI = window.electronAPI as ElectronAPI | undefined;
+    const electronAPI = this.getElectronAPI();
     if (
       this.getEnvironment() !== 'electron' ||
       !electronAPI?.getSystemAudioSettings

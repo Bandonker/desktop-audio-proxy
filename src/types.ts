@@ -5,6 +5,8 @@ export interface ProxyConfig {
   timeout?: number;
   maxRedirects?: number;
   userAgent?: string;
+  allowedProtocols?: Array<'http' | 'https'>;
+  allowPrivateAddresses?: boolean;
   enableLogging?: boolean;
   enableTranscoding?: boolean;
   cacheEnabled?: boolean;
@@ -13,13 +15,19 @@ export interface ProxyConfig {
 
 export interface TelemetryOptions {
   enabled?: boolean; // Enable telemetry tracking
-  onEvent?: (event: TelemetryEvent) => void; // Custom event handler
+  onEvent?: (_event: TelemetryEvent) => void; // Custom event handler
   trackPerformance?: boolean; // Track performance metrics
   trackErrors?: boolean; // Track errors
 }
 
 export interface TelemetryEvent {
-  type: 'proxy_start' | 'proxy_stop' | 'proxy_check' | 'url_conversion' | 'error' | 'performance';
+  type:
+    | 'proxy_start'
+    | 'proxy_stop'
+    | 'proxy_check'
+    | 'url_conversion'
+    | 'error'
+    | 'performance';
   timestamp: number;
   data?: Record<string, unknown>;
 }

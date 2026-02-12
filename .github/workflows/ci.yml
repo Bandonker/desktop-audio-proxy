@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [ main, develop ]
@@ -9,8 +12,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     
     strategy:
+      fail-fast: true
       matrix:
         node-version: [16.x, 18.x, 20.x]
     
@@ -26,12 +31,20 @@ jobs:
         
     - name: Install dependencies
       run: npm ci
+
+    - name: Lint (Node 20 quality gate)
+      if: matrix.node-version == '20.x'
+      run: npm run lint
       
     - name: Build project
       run: npm run build
+
+    - name: Demo route smoke test (Node 20)
+      if: matrix.node-version == '20.x'
+      run: npm run test:demo-smoke
       
     - name: Run tests
-      run: npm test
+      run: npm test -- --runInBand
       
     - name: Upload coverage reports
       if: matrix.node-version == '20.x'
@@ -39,10 +52,12 @@ jobs:
       with:
         name: coverage-reports
         path: coverage/
+        if-no-files-found: ignore
 
   build:
     runs-on: ubuntu-latest
     needs: test
+    timeout-minutes: 15
     
     steps:
     - name: Checkout code
@@ -56,9 +71,15 @@ jobs:
         
     - name: Install dependencies
       run: npm ci
+
+    - name: Lint quality gate
+      run: npm run lint
       
     - name: Build all targets
       run: npm run build
+
+    - name: Validate package exports
+      run: npm run verify:exports
       
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4

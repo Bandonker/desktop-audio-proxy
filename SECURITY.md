@@ -1,26 +1,41 @@
-## Security Features
+## Security Posture
 
-### URL Sanitization
-- All URLs are validated before processing
-- Invalid URLs are rejected with clear error messages
-- URL encoding is automatically applied
+This document reflects the **current implemented behavior** of the repository and calls out hardening items that are still deferred.
 
-### CORS Configuration
-- Configurable CORS origins
-- Default restrictive CORS policy
-- Option to whitelist specific domains
+## Implemented Controls (Current)
 
-###  Proxy Server Security
-- Configurable timeout limits to prevent hanging requests
-- Max redirects limit to prevent redirect loops
-- Request size limits
-- Rate limiting (configurable)
+### Request handling and bounds
+- Proxy and info routes require a `url` query parameter and reject blank values.
+- Upstream requests are bounded by configurable `timeout` and `maxRedirects` values.
+- Error responses are normalized for timeout/DNS/connection-refused scenarios.
 
-### Best Practices
+### Stream lifecycle safety
+- Proxy stream handling includes conservative cleanup for request abort, response close/error/finish, and upstream stream errors.
+- Cleanup paths are idempotent to reduce duplicate teardown side effects.
 
-#### 1. URL Whitelisting
+### CORS behavior
+- CORS behavior is configurable through `corsOrigins`.
+- Default behavior is compatibility-oriented (`*`) and should be tightened by deployers for production use.
+
+### Logging and telemetry
+- Request logging is optional (`enableLogging`) and can be disabled.
+- Telemetry is optional and local unless an application forwards events through callbacks.
+
+## Deferred Hardening Items (Not Implemented in Core)
+
+The following protections are **not currently provided by this library out of the box** and should be implemented in the host application and deployment environment:
+
+- Built-in authentication/authorization for proxy endpoints
+- Built-in URL allowlist/denylist enforcement for outbound proxy targets
+- Built-in rate limiting and abuse throttling
+- Built-in SSRF egress policy controls (network segmentation/firewalling remains external)
+- Built-in request/response body size enforcement controls
+
+## Best Practices
+
+#### 1. URL Whitelisting in your app
 ```typescript
-// Recommended: Validate URLs before passing to library
+// Recommended: Validate URLs before passing to the library
 const allowedDomains = ['example.com', 'cdn.example.com'];
 
 function isAllowedUrl(url: string): boolean {
@@ -37,26 +52,27 @@ if (isAllowedUrl(audioUrl)) {
 }
 ```
 
-#### 2. Proxy Server Configuration
+#### 2. Restrictive proxy config in production
 ```typescript
-// Use restrictive CORS in production
+// Restrict CORS and tighten request limits in production
 const server = await startProxyServer({
   port: 3002,
-  corsOrigins: ['https://yourapp.com'], // Specific origins only
-  timeout: 30000, // 30 second timeout
-  maxRedirects: 5, // Limit redirects
-  enableLogging: false // Disable logging in production
+  corsOrigins: ['https://yourapp.com'],
+  timeout: 30000,
+  maxRedirects: 5,
+  enableLogging: false,
 });
 ```
 
-#### 3. Auto-Start Proxy
+#### 3. Scope auto-start usage
 ```typescript
-// Only enable auto-start in development
+// Auto-start can be limited by environment policy
 const client = createAudioClient({
   autoStartProxy: process.env.NODE_ENV === 'development',
   proxyServerConfig: {
-    corsOrigins: process.env.NODE_ENV === 'development' ? '*' : 'https://yourapp.com'
-  }
+    corsOrigins:
+      process.env.NODE_ENV === 'development' ? '*' : 'https://yourapp.com',
+  },
 });
 ```
 

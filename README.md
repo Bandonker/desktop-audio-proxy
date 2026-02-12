@@ -6,7 +6,7 @@
 
 
 <p align="center" style="font-size:1.1em;">
-  <strong>Bypasses CORS & WebKit codec issues in Tauri and Electron audio apps with ease.</strong>
+  <strong>Bypasses CORS & WebKit codec issues in Tauri and Electron apps with universal audio and video streaming support.</strong>
 </p>
 
 <p align="center">
@@ -39,23 +39,28 @@
 
 ## Features
 
-- **CORS Bypass** - Play external audio URLs without CORS restrictions
+- **CORS Bypass** - Play external audio/video URLs without CORS restrictions
+- **Universal Media Streaming** - Supports audio (MP3, AAC, OGG, WAV) and video (MP4, M3U8/HLS, WebM)
 - **Auto-Start Proxy** - Automatically spin up proxy server when needed (Node.js only)
 - **Tauri v1 & v2 Support** - Works seamlessly with both Tauri versions
 - **Debug Logger** - Multi-level logging with category filtering for troubleshooting
 - **Telemetry System** - Optional performance monitoring and event tracking
 - **React/Vue Integration** - Ready-to-use hooks and composables for seamless framework integration
 - **Enhanced Codec Detection** - Comprehensive format testing with real-time capabilities mapping
-- **Audio Metadata Extraction** - Get duration, format, bitrate from audio files
+- **Media Metadata Extraction** - Get duration, format, bitrate from audio/video files
 - **Audio Device Enumeration** - List and manage available audio devices
 - **WebKit Compatibility** - Solves codec issues in Tauri/Electron WebView
 - **Environment Detection** - Automatically detects Tauri, Electron, or web environment
 - **Smart Fallbacks** - Graceful degradation when proxy unavailable
+- **URL Security Guardrails** - Protocol allowlist and private-network blocking for proxy targets
 - **Actionable Error Messages** - Clear error messages with specific steps to fix issues
 - **Retry Logic** - Configurable retry attempts with delays
 - **Health Monitoring** - Built-in health and info endpoints
+- **Stream Lifecycle Hardening** - Conservative cleanup for aborted/closed proxy streams
+- **Deterministic Core Tests** - Local upstream mock coverage for info/proxy/timeout paths
 - **TypeScript** - Full type safety and IntelliSense support with JSDoc comments
-- **Range Requests** - Support for audio seeking and streaming
+- **Range Requests** - Full support for seeking in audio and video streams
+- **HLS/Adaptive Streaming** - Handle M3U8 playlists and adaptive bitrate streaming
 - **Tree-Shakeable** - Optimized for smaller bundles with dead code elimination
 - **Interactive Demo** - Live testing environment with auto-detection 
 
@@ -106,20 +111,22 @@ Seamless proxy server integration with automatic port detection:
 
 When building desktop applications with web technologies (Tauri, Electron), developers often face:
 
-1. **CORS Issues**: External audio URLs (podcasts, radio streams) are blocked due to Cross-Origin Resource Sharing policies
-2. **Codec Compatibility**: WebKit may not support certain audio codecs even with proper GStreamer plugins installed
-3. **Authentication**: Some audio streams require special headers or authentication
-4. **Redirects**: Many podcast/streaming URLs use multiple redirects that cause issues
+1. **CORS Issues**: External audio/video URLs (podcasts, radio streams, video content) are blocked due to Cross-Origin Resource Sharing policies
+2. **Codec Compatibility**: WebKit may not support certain audio/video codecs even with proper GStreamer plugins installed
+3. **Authentication**: Some media streams require special headers or authentication
+4. **Redirects**: Many podcast/streaming/video URLs use multiple redirects that cause issues
+5. **HLS/Adaptive Streaming**: M3U8 playlists and adaptive bitrate video may fail to load properly
 
 ## The Solution
 
 Desktop Audio Proxy provides:
 
-- **Automatic CORS bypass** for external audio URLs
-- **Codec transcoding** support (optional, requires ffmpeg)
+- **Automatic CORS bypass** for external audio and video URLs
+- **Universal media streaming** - works with audio (MP3, AAC, WAV) and video (MP4, WebM, M3U8/HLS)
+- **Range request support** - enables seeking in both audio and video
 - **Smart redirect handling** with configurable limits
 - **Automatic environment detection** (Tauri/Electron/Web)
-- **Optional caching** for better performance
+- **Optional info endpoint caching** for faster repeated metadata checks
 - **Simple API** that works like a drop-in replacement
 
 ## Installation
@@ -131,6 +138,13 @@ yarn add desktop-audio-proxy
 # or
 pnpm add desktop-audio-proxy
 ```
+
+### Runtime Requirements
+
+- Node.js `>=14` for package compatibility (per `engines`)
+- Node.js `>=18` recommended for built-in `fetch` support
+- If you run in Node.js 14/16, provide a global `fetch` polyfill (for client health/info checks)
+- React/Vue entry points require their respective framework in your app (`react` or `vue`)
 
 ## Package Exports
 
@@ -157,9 +171,20 @@ import { startProxyServer, AudioProxyServer } from 'desktop-audio-proxy/server';
 **See Desktop Audio Proxy in action!** Our comprehensive demo provides real-time testing with automatic library detection:
 
 ```bash
-npm run demo        # Start demo with auto-server
-npm run demo:serve  # Serve demo on http://localhost:8080
+npm run demo             # Build React demo bundle + start full demo server on http://localhost:8080
+npm run build:react-demo # Rebuild React demo bundle only
+npm run demo:serve       # Start static demo server on http://localhost:8080
 ```
+
+`demo` and `demo:serve` both preserve the legacy example route:
+`/examples/react-video-player.tsx` -> `/examples/react-example.tsx`
+
+**Demo Route Map:**
+- `/` - Main interactive demo UI
+- `/react-player.html` - React demo player page
+- `/telemetry-dashboard.html` - Telemetry event viewer
+- `/examples/react-example.tsx` - Current React example source
+- `/examples/react-video-player.tsx` - Legacy path (302 redirect to `react-example.tsx`)
 
 **Demo Features:**
 -  **Auto-Detection** - Automatically finds and loads available library builds (local, CDN, various formats)
@@ -256,6 +281,109 @@ const audioClient = createAudioClient({
 const playableUrl = await audioClient.getPlayableUrl('https://example.com/audio.mp3');
 ```
 
+### Proxy Endpoint Reference
+
+When the proxy server is running (for example at `http://localhost:3002`):
+
+- `GET /health` - Liveness/config snapshot used by client auto-detection.
+- `GET /info?url=<absolute-url>` - Metadata-only upstream check (status, headers, `content-type`, ranges support).
+- `GET /proxy?url=<absolute-url>` - Stream endpoint with range support for seeking and CORS headers for browser playback.
+
+URL validation rules:
+- `url` must be absolute (`http://` or `https://` by default)
+- Private/local targets are blocked by default unless `allowPrivateAddresses: true`
+
+### Video Streaming (MP4, M3U8/HLS, WebM)
+
+DAP fully supports video streaming with the same simple API:
+
+```typescript
+import { createAudioClient } from 'desktop-audio-proxy';
+
+const audioClient = createAudioClient({ autoStartProxy: true });
+
+// MP4 video streaming
+const videoUrl = await audioClient.getPlayableUrl('https://example.com/video.mp4');
+videoElement.src = videoUrl;
+
+// M3U8/HLS adaptive streaming
+const hlsUrl = await audioClient.getPlayableUrl('https://example.com/playlist.m3u8');
+videoElement.src = hlsUrl;
+
+// WebM video
+const webmUrl = await audioClient.getPlayableUrl('https://example.com/video.webm');
+videoElement.src = webmUrl;
+```
+
+**Video features automatically supported:**
+ - Range requests for seeking
+ - M3U8/HLS playlists (master and media playlists)
+ - Adaptive bitrate streaming
+ - All video codecs (H.264, H.265, VP8, VP9, AV1)
+ - Content-Type detection and proxying
+ - Video metadata extraction via `/info` endpoint
+
+**React Video Example:**
+
+```tsx
+import { useAudioUrl } from 'desktop-audio-proxy/react';
+
+function VideoPlayer({ url }) {
+  const { playableUrl, loading, error } = useAudioUrl(url, {
+    autoStartProxy: true
+  });
+
+  if (loading) return <div>Loading video...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <video controls width="100%">
+      <source src={playableUrl} />
+    </video>
+  );
+}
+```
+
+## Examples Directory
+
+- **React Hooks Demo:** See the full React example at [examples/react-example.tsx](examples/react-example.tsx). It demonstrates `useAudioProxy`, `useAudioUrl`, capabilities checks, proxy status monitoring, and provider-based setup.
+
+To view the React demo locally with the bundled demo server:
+
+```bash
+npm run demo
+# then open http://localhost:8080 in your browser and navigate to the examples folder
+```
+
+If you prefer to open the example file directly in your project, the demo web server serves files under `/examples/` (e.g. http://localhost:8080/examples/react-example.tsx) so you can fetch the source from the running demo server.
+
+## Migration Notes
+
+Recent non-breaking compatibility updates:
+
+- **React example path rename**: `examples/react-video-player.tsx` was replaced by `examples/react-example.tsx`.
+  - Compatibility route is supported in demo servers: `/examples/react-video-player.tsx` redirects to `/examples/react-example.tsx`.
+- **Client option rename**: `proxyConfig` was replaced by `proxyServerConfig`.
+  - Use `proxyServerConfig` in all new code and docs examples.
+
+## Security Defaults (Recommended Baseline)
+
+These defaults are intentionally conservative. Keep them unless you have a trusted internal-network use case:
+
+- `allowedProtocols: ['http', 'https']` (rejects other protocols)
+- `allowPrivateAddresses: false` (blocks localhost/RFC1918/link-local targets to reduce SSRF risk)
+- `maxRedirects: 10` (limits redirect-chain abuse)
+- `timeout: 60000` (bounds long-running upstream requests)
+- `host: 'localhost'` by default (proxy is local-only unless you explicitly change it)
+
+Production recommendations:
+
+- Keep `allowPrivateAddresses` disabled unless you explicitly need private-network media sources.
+- Restrict `corsOrigins` to your known app origin(s) instead of `'*'` in production.
+- Keep `enableLogging` off in production unless actively debugging.
+- Review and follow `SECURITY.md` before exposing a proxy beyond local development.
+
+
 ### Tauri Integration
 
 ```typescript
@@ -266,9 +394,9 @@ const audioService = new TauriAudioService({
   autoDetect: true
 });
 
-// In your audio player
+// Works for both audio and video
 const streamUrl = await audioService.getStreamableUrl(originalUrl);
-audioElement.src = streamUrl;
+audioElement.src = streamUrl; // or videoElement.src
 ```
 
 ### Auto-Start Proxy (Node.js Only)
@@ -305,9 +433,7 @@ await audioClient.stopProxyServer();
 ```typescript
 import { ElectronAudioService } from 'desktop-audio-proxy';
 
-const audioService = new ElectronAudioService({
-  enableTranscoding: true // Optional: transcode unsupported formats
-});
+const audioService = new ElectronAudioService();
 
 const streamUrl = await audioService.getStreamableUrl(originalUrl);
 ```
@@ -323,13 +449,14 @@ const audioClient = createAudioClient({
   retryDelay: 1000,
   
   // Optional proxy server config
-  proxyConfig: {
+  proxyServerConfig: {
     port: 3002,
     corsOrigins: '*',
     timeout: 60000,
     maxRedirects: 20,
+    allowedProtocols: ['http', 'https'],
+    allowPrivateAddresses: false,
     enableLogging: true,
-    enableTranscoding: false,
     cacheEnabled: true,
     cacheTTL: 3600
   }
@@ -586,6 +713,31 @@ const { capabilities } = useAudioCapabilities();
 - `useProxyStatus()` - Reactive proxy server status monitoring
 - `useAudioMetadata(filePath)` - Reactive metadata extraction (Tauri/Electron)
 
+### Vue Plugin Pattern
+
+For app-wide injection (instead of creating a client in each component):
+
+```ts
+import { createApp } from 'vue';
+import { createAudioProxy } from 'desktop-audio-proxy/vue';
+import App from './App.vue';
+
+const app = createApp(App);
+
+app.use(
+  createAudioProxy({
+    defaultOptions: {
+      proxyUrl: 'http://localhost:3002',
+      retryAttempts: 3
+    }
+  })
+);
+
+app.mount('#app');
+```
+
+Then inside a component/composable, use `useGlobalAudioProxy()` to access the injected shared client.
+
 ## API Reference
 
 ### AudioProxyClient
@@ -599,14 +751,10 @@ class AudioProxyClient {
   canPlayUrl(url: string): Promise<StreamInfo>;
   getEnvironment(): Environment;
   isProxyAvailable(): Promise<boolean>;
-  
-  // Stream Management
-  canPlayStream(url: string): Promise<boolean>;
-  checkStreamHealth(url: string): Promise<HealthStatus>;
-  
-  // Debug and Utilities
-  enableDebug(): void;
-  getClientInfo(): ClientInfo;
+  getProxyUrl(): string;
+
+  // Lifecycle
+  stopProxyServer(): Promise<void>;
 }
 ```
 
@@ -614,22 +762,33 @@ class AudioProxyClient {
 
 ```typescript
 class TauriAudioService {
-  constructor(options?: TauriAudioOptions);
+  constructor(options?: AudioServiceOptions);
   
   // URL Processing
   getStreamableUrl(url: string): Promise<string>;
-  convertLocalFile(filePath: string): Promise<string>;
+  canPlayStream(url: string): Promise<StreamInfo>;
   
-  // Environment Detection
+  // Environment / Health
   getEnvironment(): Environment;
+  isProxyAvailable(): Promise<boolean>;
   
   // Enhanced v1.1.0 Features
-  checkCodecSupport(): Promise<CodecInfo>;
-  getAudioMetadata(filePath: string): Promise<AudioMetadata>; 
-  getAudioDevices(): Promise<AudioDevice[]>; 
-  
-  // Health Checks
-  isProxyAvailable(): Promise<boolean>;
+  checkSystemCodecs(): Promise<{
+    supportedFormats: string[];
+    missingCodecs: string[];
+    capabilities: Record<string, string>;
+  }>;
+  getAudioMetadata(filePath: string): Promise<{
+    duration?: number;
+    bitrate?: number;
+    sampleRate?: number;
+    channels?: number;
+    format?: string;
+  } | null>;
+  getAudioDevices(): Promise<{
+    inputDevices: Array<{ id: string; name: string }>;
+    outputDevices: Array<{ id: string; name: string }>;
+  } | null>;
 }
 ```
 
@@ -637,23 +796,38 @@ class TauriAudioService {
 
 ```typescript
 class ElectronAudioService {
-  constructor(options?: ElectronAudioOptions);
+  constructor(options?: AudioServiceOptions);
   
   // URL Processing
   getStreamableUrl(url: string): Promise<string>;
-  resolveLocalPath(path: string): Promise<string>;
+  canPlayStream(url: string): Promise<StreamInfo>;
   
-  // Environment Detection
+  // Environment / Health
   getEnvironment(): Environment;
+  isProxyAvailable(): Promise<boolean>;
   
   // Enhanced v1.1.0 Features
-  checkCodecSupport(): Promise<CodecInfo>;
-  getAudioMetadata(filePath: string): Promise<AudioMetadata>; 
-  getAudioDevices(): Promise<AudioDevice[]>; 
-  getSystemAudioSettings(): Promise<SystemAudioSettings>; 
-  
-  // System Integration  
-  getSystemAudioInfo(): Promise<SystemAudioInfo>;
+  checkSystemCodecs(): Promise<{
+    supportedFormats: string[];
+    missingCodecs: string[];
+    capabilities: Record<string, string>;
+  }>;
+  getAudioMetadata(filePath: string): Promise<{
+    duration?: number;
+    bitrate?: number;
+    sampleRate?: number;
+    channels?: number;
+    format?: string;
+  } | null>;
+  getAudioDevices(): Promise<{
+    inputDevices: Array<{ id: string; name: string }>;
+    outputDevices: Array<{ id: string; name: string }>;
+  } | null>;
+  getSystemAudioSettings(): Promise<{
+    defaultInputDevice?: string;
+    defaultOutputDevice?: string;
+    masterVolume?: number;
+  } | null>;
 }
 ```
 
@@ -666,16 +840,10 @@ class AudioProxyServer {
   // Server Management
   start(): Promise<void>;
   stop(): Promise<void>;
-  restart(): Promise<void>;
   
-  // Server Info
-  getInfo(): ServerInfo;
-  getHealth(): Promise<HealthStatus>;
-  isRunning(): boolean;
-  
-  // Configuration
-  updateConfig(config: Partial<ProxyConfig>): void;
-  getConfig(): ProxyConfig;
+  // Runtime Info
+  getActualPort(): number;
+  getProxyUrl(): string;
 }
 ```
 
@@ -697,11 +865,8 @@ function createProxyServer(config?: ProxyConfig): AudioProxyServer;
 ### Running Tests
 
 ```bash
-# Run all tests (Jest + Integration)
+# Run test suite
 npm test
-
-# Run Jest tests only
-npm run test
 
 # Run tests in watch mode during development
 npm run test:watch
@@ -709,22 +874,14 @@ npm run test:watch
 # Generate coverage report
 npm run test:coverage
 
-# Run legacy integration tests
-npm run test:client
-npm run test:integration
+# Verify package exports and server startup helpers
+npm run verify:exports
+
+# Smoke test demo routes (includes legacy redirect checks)
+npm run test:demo-smoke
 
 # Build and run all tests
 npm run test:all
-```
-
-### Code Quality
-
-```bash
-# Lint code
-npm run lint
-
-# Auto-fix linting issues
-npm run lint:fix
 ```
 
 ## Examples
@@ -759,7 +916,7 @@ The `examples/` directory contains full integration examples updated for v1.1.0:
 
 ### Common Issues
 
-1. **"Media format not supported"**: Install GStreamer plugins or enable transcoding
+1. **"Media format not supported"**: Verify source codec support in your runtime (WebView/Electron/OS codecs)
 2. **"CORS error"**: Ensure the proxy server is running
 3. **"Connection refused"**: Check if the proxy port is available
 
@@ -767,7 +924,7 @@ The `examples/` directory contains full integration examples updated for v1.1.0:
 
 ```typescript
 const audioClient = createAudioClient({
-  proxyConfig: {
+  proxyServerConfig: {
     enableLogging: true
   }
 });
@@ -795,14 +952,15 @@ if (environment === 'tauri') {
 The included demo is perfect for debugging integration issues:
 
 ```bash
-# 1. Build the library
-npm run build
+# Full demo experience (web + proxy + examples)
+npm run demo
 
-# 2. Start proxy server  
-npm run proxy:start
+# Static demo only (useful for UI checks)
+npm run build:react-demo
+npm run demo:serve
+
+# Terminal demo with ASCII art + diagnostics
 npm run demo:cli
-
-
 ```
 
 ## Development
@@ -823,80 +981,67 @@ npm run dev
 - `dist/index.{esm.js,cjs}` - Main entry with all features
 - `dist/browser.{esm.js,cjs}` - Browser-optimized (no Node.js deps)
 - `dist/server.{esm.js,cjs}` - Server-only functionality
+- `dist/react.{esm.js,cjs}` - React hooks entry
+- `dist/vue.{esm.js,cjs}` - Vue composables entry
+- `dist/server.js` - Legacy server compatibility build
 - `dist/*.d.ts` - TypeScript definitions for all variants
 
 ### Project Structure
 
-```
+```text
 src/
-├── index.ts           # Main exports (client + server)
-├── browser.ts         # Browser-safe exports only
-├── server.ts          # Server-only exports
-├── client.ts          # AudioProxyClient implementation
-├── server-impl.ts     # AudioProxyServer implementation
-├── tauri-service.ts   # Tauri-specific service
-├── electron-service.ts # Electron-specific service
-├── types.ts           # TypeScript type definitions
-└── __tests__/         # Jest test suites
+|-- index.ts            # Main exports (client + server)
+|-- browser.ts          # Browser-safe exports only
+|-- server.ts           # Server-only exports
+|-- client.ts           # AudioProxyClient implementation
+|-- server-impl.ts      # AudioProxyServer implementation
+|-- tauri-service.ts    # Tauri-specific service
+|-- electron-service.ts # Electron-specific service
+|-- react.ts            # React hooks entry
+|-- vue.ts              # Vue composables entry
+|-- types.ts            # TypeScript type definitions
+`-- __tests__/          # Jest test suites
+```
+
+### Release Checklist
+
+Before publishing a release:
+
+```bash
+npm run lint
+npm run build
+npm test -- --runInBand
+npm run verify:exports
+npm run build:react-demo
+npm run test:demo-smoke
+npm pack --dry-run
 ```
 
 ### Contributing
 
-1. **Setup Development Environment:**
-   ```bash
-   git clone https://github.com/bandonker/desktop-audio-proxy
-   cd desktop-audio-proxy
-   npm install
-   ```
-
-2. **Development Workflow:**
-   ```bash
-   npm run dev          # Start build in watch mode
-   npm run test:watch   # Run tests in watch mode
-   npm run lint:fix     # Auto-fix code style issues
-   ```
-
-3. **Before Committing:**
-   ```bash
-   npm run build        # Ensure clean build
-   npm test            # Run all tests
-   npm run lint        # Check code style
-   ```
-
-### CI/CD Pipeline
-
-This project uses GitHub Actions for:
--  Automated testing on Node.js 14, 16, 18, 20
--  Code coverage reporting with Codecov
--  ESLint and Prettier checks
--  Build verification for all entry points
--  Automated npm publishing on releases
+```bash
+git clone https://github.com/bandonker/desktop-audio-proxy
+cd desktop-audio-proxy
+npm install
+npm run build
+npm test
+```
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
 <div align="center">
-  <sub>MIT · Bandonker</sub>
+  <sub>MIT - Bandonker</sub>
 </div>
-
-
-## Related Projects
-
-- [Tauri](https://tauri.app) - Build smaller, faster, and more secure desktop applications
-- [Electron](https://www.electronjs.org) - Build cross-platform desktop apps with web technologies
 
 ## Additional Documentation
 
 - [SECURITY.md](SECURITY.md) - Security best practices and vulnerability reporting
 - [TAURI_MIGRATION.md](TAURI_MIGRATION.md) - Guide for migrating from Tauri v1 to v2
 
-## Support
-
-- [Report bugs](https://github.com/Bandonker/desktop-audio-proxy/issues)
-- [Request features](https://github.com/Bandonker/desktop-audio-proxy/discussions)
-- [Read the docs](https://github.com/Bandonker/desktop-audio-proxy/wiki)
-
 <div align="center">
-  <sub>Made with ❤️ by Bandonker</sub>
+  <sub>Made with &#10084;&#65039; by Bandonker</sub>
 </div>
+
+

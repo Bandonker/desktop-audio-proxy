@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.1.7] - 2026-02-06
+
+### Added
+- Comprehensive video streaming support (MP4, WebM, M3U8/HLS adaptive streaming)
+- Video examples: `examples/video-streaming.js` with 6 complete examples
+- React video player component: `examples/react-video-player.tsx` with basic, advanced, and playlist modes
+- Video feature documentation in README with code examples and usage patterns
+
+### Changed
+- Expanded README with explicit video streaming feature documentation
+- Updated package description to include video media support
+- Enhanced package keywords to cover video formats (hls-streaming, m3u8-playlist, mp4-streaming, video-streaming)
+- Improved gitignore to exclude generated maintenance artifacts and patch diffs
+
+### Documentation
+- Clarified universal media streaming capabilities (audio and video)
+- Added dedicated "Video Streaming" section with MP4, M3U8/HLS, and seeking examples
+- Updated problem/solution sections to address video codec and HLS challenges
+- Documented range request support for video seeking
+
 ## [1.1.6] - 2025-10-21
 
 ### Fixed

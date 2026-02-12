@@ -20,7 +20,7 @@ export interface DebugOptions {
   categories?: LogCategory[];
   timestamp?: boolean;
   stackTrace?: boolean;
-  onLog?: (entry: DebugLogEntry) => void;
+  onLog?: (_entry: DebugLogEntry) => void;
 }
 
 export interface DebugLogEntry {
@@ -79,11 +79,7 @@ class AudioProxyDebugger {
     return messageLevelIndex >= currentLevelIndex;
   }
 
-  public debug(
-    category: LogCategory,
-    message: string,
-    data?: unknown
-  ): void {
+  public debug(category: LogCategory, message: string, data?: unknown): void {
     this.log('debug', category, message, data);
   }
 
@@ -95,11 +91,7 @@ class AudioProxyDebugger {
     this.log('warn', category, message, data);
   }
 
-  public error(
-    category: LogCategory,
-    message: string,
-    data?: unknown
-  ): void {
+  public error(category: LogCategory, message: string, data?: unknown): void {
     this.log('error', category, message, data);
   }
 
@@ -140,9 +132,14 @@ class AudioProxyDebugger {
     const prefix = `${timestamp} [${entry.category.toUpperCase()}]`;
     const message = `${prefix} ${entry.message}`;
 
-    const consoleMethod = entry.level === 'error' ? 'error' :
-                         entry.level === 'warn' ? 'warn' :
-                         entry.level === 'debug' ? 'debug' : 'log';
+    const consoleMethod =
+      entry.level === 'error'
+        ? 'error'
+        : entry.level === 'warn'
+          ? 'warn'
+          : entry.level === 'debug'
+            ? 'debug'
+            : 'log';
 
     if (entry.data !== undefined) {
       console[consoleMethod](message, entry.data);
@@ -155,13 +152,11 @@ class AudioProxyDebugger {
     }
   }
 
-  public getLogs(
-    filter?: {
-      level?: LogLevel;
-      category?: LogCategory;
-      since?: number;
-    }
-  ): DebugLogEntry[] {
+  public getLogs(filter?: {
+    level?: LogLevel;
+    category?: LogCategory;
+    since?: number;
+  }): DebugLogEntry[] {
     let filtered = this.logs;
 
     if (filter?.level) {
@@ -249,7 +244,8 @@ export function getDebugger(options?: DebugOptions): AudioProxyDebugger {
     globalDebugger = new AudioProxyDebugger(options);
   } else if (options) {
     // Update options if provided
-    if (options.enabled !== undefined) globalDebugger.setEnabled(options.enabled);
+    if (options.enabled !== undefined)
+      globalDebugger.setEnabled(options.enabled);
     if (options.level) globalDebugger.setLevel(options.level);
     if (options.categories) globalDebugger.setCategories(options.categories);
   }
