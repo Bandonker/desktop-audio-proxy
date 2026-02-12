@@ -85,7 +85,6 @@ describe('AudioProxyServer', () => {
   afterEach(async () => {
     if (server) {
       await server.stop();
-      server = null as any; // Clear reference
     }
   });
 
@@ -103,6 +102,8 @@ describe('AudioProxyServer', () => {
         timeout: 30000,
         maxRedirects: 5,
         userAgent: 'TestAgent/1.0',
+        allowedProtocols: ['http', 'https'],
+        allowPrivateAddresses: true,
         enableLogging: false,
         enableTranscoding: true,
         cacheEnabled: false,
@@ -183,7 +184,11 @@ describe('AudioProxyServer', () => {
 
   describe('info endpoint (integration)', () => {
     beforeEach(async () => {
-      server = new AudioProxyServer({ port: testPort, enableLogging: false });
+      server = new AudioProxyServer({
+        port: testPort,
+        enableLogging: false,
+        allowPrivateAddresses: true,
+      });
       await server.start();
     });
 
@@ -293,17 +298,100 @@ describe('AudioProxyServer', () => {
         fail('Expected error but request succeeded');
       } catch (error: unknown) {
         const errorResponse = error as ErrorResponse;
-        expect(errorResponse.response.status).toBe(500);
-        expect(errorResponse.response.data.error).toBe(
-          'Failed to get stream info'
-        );
+        expect(errorResponse.response.status).toBe(400);
+        expect(errorResponse.response.data.error).toBe('Invalid URL parameter');
+      }
+    });
+
+    it('should cache info responses when cache is enabled', async () => {
+      let requestCount = 0;
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((req, res) => {
+          if (req.url !== '/cached-audio') {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('not found');
+            return;
+          }
+
+          requestCount += 1;
+          res.writeHead(200, {
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': '12345',
+            'Accept-Ranges': 'bytes',
+            'Last-Modified': 'Wed, 01 Jan 2020 00:00:00 GMT',
+          });
+          res.end();
+        });
+
+      const testUrl = `${baseUrl}/cached-audio`;
+      try {
+        const firstResponse = await axios.get(`${server.getProxyUrl()}/info`, {
+          params: { url: testUrl },
+        });
+        const secondResponse = await axios.get(`${server.getProxyUrl()}/info`, {
+          params: { url: testUrl },
+        });
+
+        expect(firstResponse.status).toBe(200);
+        expect(secondResponse.status).toBe(200);
+        expect(requestCount).toBe(1);
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
+      }
+    });
+
+    it('should skip cache when disabled', async () => {
+      await server.stop();
+      server = new AudioProxyServer({
+        port: testPort,
+        enableLogging: false,
+        allowPrivateAddresses: true,
+        cacheEnabled: false,
+      });
+      await server.start();
+
+      let requestCount = 0;
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((req, res) => {
+          if (req.url !== '/no-cache-audio') {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('not found');
+            return;
+          }
+
+          requestCount += 1;
+          res.writeHead(200, {
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': '12345',
+            'Accept-Ranges': 'bytes',
+            'Last-Modified': 'Wed, 01 Jan 2020 00:00:00 GMT',
+          });
+          res.end();
+        });
+
+      const testUrl = `${baseUrl}/no-cache-audio`;
+      try {
+        await axios.get(`${server.getProxyUrl()}/info`, {
+          params: { url: testUrl },
+        });
+        await axios.get(`${server.getProxyUrl()}/info`, {
+          params: { url: testUrl },
+        });
+
+        expect(requestCount).toBe(2);
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
       }
     });
   });
 
   describe('proxy endpoint (integration)', () => {
     beforeEach(async () => {
-      server = new AudioProxyServer({ port: testPort, enableLogging: false });
+      server = new AudioProxyServer({
+        port: testPort,
+        enableLogging: false,
+        allowPrivateAddresses: true,
+      });
       await server.start();
     });
 
@@ -439,6 +527,7 @@ describe('AudioProxyServer', () => {
       server = new AudioProxyServer({
         port: testPort,
         enableLogging: false,
+        allowPrivateAddresses: true,
         timeout: 100,
       });
       await server.start();
@@ -465,6 +554,46 @@ describe('AudioProxyServer', () => {
         expect(errorResponse.response.data.error).toBe('Request timeout');
       } finally {
         await stopLocalUpstreamServer(upstreamServer);
+      }
+    });
+  });
+
+  describe('security validation', () => {
+    beforeEach(async () => {
+      server = new AudioProxyServer({
+        port: testPort,
+        enableLogging: false,
+      });
+      await server.start();
+    });
+
+    it('should block private/local addresses by default', async () => {
+      try {
+        await axios.get(`${server.getProxyUrl()}/proxy`, {
+          params: { url: 'http://127.0.0.1:8080/audio.mp3' },
+        });
+        fail('Expected private address to be blocked');
+      } catch (error: unknown) {
+        const errorResponse = error as ErrorResponse;
+        expect(errorResponse.response.status).toBe(403);
+        expect(errorResponse.response.data.error).toBe(
+          'Private or local addresses are blocked'
+        );
+      }
+    });
+
+    it('should reject unsupported URL protocols', async () => {
+      try {
+        await axios.get(`${server.getProxyUrl()}/info`, {
+          params: { url: 'file:///etc/passwd' },
+        });
+        fail('Expected unsupported protocol to be rejected');
+      } catch (error: unknown) {
+        const errorResponse = error as ErrorResponse;
+        expect(errorResponse.response.status).toBe(400);
+        expect(errorResponse.response.data.error).toBe(
+          'Unsupported URL protocol'
+        );
       }
     });
   });

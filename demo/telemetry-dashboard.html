@@ -97,6 +97,90 @@
             transform: translateY(0);
         }
 
+        /* Modal styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 10000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 32px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease;
+            text-align: center;
+        }
+
+        .modal-icon {
+            font-size: 3em;
+            margin-bottom: 16px;
+        }
+
+        .modal-title {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .modal-message {
+            font-size: 1em;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        .modal-button {
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .modal-button:hover {
+            background: var(--accent-primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         select, input[type="text"], input[type="url"], input[type="number"] {
             padding: 10px;
             border: 2px solid var(--border-color);
@@ -331,7 +415,38 @@
         </div>
     </div>
 
+    <!-- Modal -->
+    <div id="modalOverlay" class="modal-overlay" onclick="closeModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-icon" id="modalIcon">✅</div>
+            <div class="modal-title" id="modalTitle">Success</div>
+            <div class="modal-message" id="modalMessage">Operation completed successfully</div>
+            <button class="modal-button" onclick="closeModal()">Got it!</button>
+        </div>
+    </div>
+
     <script>
+        // Modal functions
+        function showModal(title, message, icon = '✅') {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            document.getElementById('modalIcon').textContent = icon;
+            document.getElementById('modalOverlay').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('show');
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         // Provide Node.js globals for browser
         window.process = { env: {}, browser: true, version: '', versions: {} };
         window.global = window;
@@ -391,120 +506,151 @@
                     <div style="background: #fff3e0; padding: 24px; border-radius: 8px; text-align: left; margin-bottom: 24px; border: 2px solid #ff9800;">
                         <h3 style="margin-bottom: 12px; color: #1a1a1a; font-size: 1.2em; font-weight: 600;">Start a web server from PROJECT ROOT:</h3>
                         <p style="margin-bottom: 16px; color: #e65100; font-weight: 600; font-size: 0.95em;">⚠️ Must run from project root (not demo folder) to access ../dist/</p>
-                        <div style="margin-bottom: 12px; padding: 12px; background: white; border-radius: 6px;">
-                            <div style="margin-bottom: 4px; color: #1a1a1a; font-weight: 600;">Option 1: NPX (Recommended)</div>
-                            <code style="background: #1a1a1a; color: #4fc3f7; padding: 6px 12px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-weight: 600; display: inline-block;">npx http-server -p 8080</code>
-                        </div>
-                        <div style="margin-bottom: 0; padding: 12px; background: white; border-radius: 6px;">
-                            <div style="margin-bottom: 4px; color: #1a1a1a; font-weight: 600;">Option 2: Python 3</div>
-                            <code style="background: #1a1a1a; color: #4fc3f7; padding: 6px 12px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-weight: 600; display: inline-block;">python3 -m http.server 8080</code>
-                        </div>
-                    </div>
-                    <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin-bottom: 16px; border: 2px solid #4caf50;">
-                        <p style="color: #1a1a1a; font-weight: 600; font-size: 1.1em; margin-bottom: 12px;">📍 Then open in your browser:</p>
-                        <div style="background: white; padding: 12px; border-radius: 6px;">
-                            <code style="background: #1a1a1a; color: #66bb6a; padding: 8px 16px; border-radius: 6px; font-size: 1.1em; font-family: 'JetBrains Mono', monospace; font-weight: 600; display: inline-block;">http://localhost:8080/demo/telemetry-dashboard.html</code>
-                        </div>
-                    </div>
-                </div>
-            `;
+                `;
                 throw error;
             }
-        })();
 
-        function initializeDashboard() {
-            let client = null;
-            let telemetryActive = false;
-            let events = [];
-            let performanceData = [];
+            // Make these accessible to all functions
+            window.dashboardState = {
+                client: null,
+                telemetryActive: false,
+                events: [],
+                performanceData: []
+            };
+
+            // Define handler before it's used
+            function handleTelemetryEvent(event) {
+                console.log('📊 Telemetry event:', event);
+                window.dashboardState.events.push(event);
+
+                if (event.type === 'performance') {
+                    window.dashboardState.performanceData.push(event);
+                    updatePerformanceMetrics();
+                }
+
+                addTimelineEntry(event);
+                updateStats();
+                updateEventDetails(event);
+            }
 
             window.startTelemetry = () => {
-            telemetryActive = true;
+                console.log('🚀 Starting telemetry...');
+                window.dashboardState.telemetryActive = true;
 
-            // Enable debugging (if available in this version)
-            if (enableDebug) {
-                enableDebug('debug');
-            }
-
-            // Create client with telemetry
-            client = createAudioClient({
-                proxyUrl: 'http://localhost:3002',
-                autoDetect: true,
-                fallbackToOriginal: true,
-                telemetry: {
-                    enabled: true,
-                    trackPerformance: true,
-                    trackErrors: true,
-                    onEvent: handleTelemetryEvent
+                // Enable debugging (if available in this version)
+                if (enableDebug) {
+                    enableDebug('debug');
+                    console.log('✅ Debug mode enabled');
                 }
-            });
 
-            updateUI();
-            alert('Telemetry started! Test a URL to see data.');
-        };
+                try {
+                    // Create client with telemetry
+                    window.dashboardState.client = createAudioClient({
+                        proxyUrl: 'http://localhost:3002',
+                        autoDetect: true,
+                        fallbackToOriginal: true,
+                        telemetry: {
+                            enabled: true,
+                            trackPerformance: true,
+                            trackErrors: true,
+                            onEvent: handleTelemetryEvent
+                        }
+                    });
 
-        window.stopTelemetry = () => {
-            telemetryActive = false;
-            updateUI();
-        };
-
-        window.clearLogs = () => {
-            events = [];
-            performanceData = [];
-            document.getElementById('logs').innerHTML = '';
-            document.getElementById('timeline').innerHTML = '';
-            document.getElementById('eventDetails').textContent = 'Logs cleared.';
-            updateStats();
-        };
-
-        window.exportData = () => {
-            const data = {
-                events,
-                performanceData,
-                timestamp: new Date().toISOString(),
-                stats: getStats()
+                    console.log('✅ Telemetry client created:', window.dashboardState.client);
+                    updateUI();
+                    showModal(
+                        '🎉 Telemetry Started!',
+                        'Test a URL to see real-time data and performance metrics.',
+                        '📊'
+                    );
+                    addLog('info', 'Telemetry system started successfully');
+                } catch (error) {
+                    console.error('❌ Failed to start telemetry:', error);
+                    showModal(
+                        '❌ Error',
+                        `Failed to start telemetry: ${error.message}`,
+                        '⚠️'
+                    );
+                    addLog('error', `Failed to start telemetry: ${error.message}`);
+                }
             };
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `telemetry-${Date.now()}.json`;
-            a.click();
-        };
 
-        window.testUrl = async () => {
-            if (!client) {
-                alert('Please start telemetry first!');
-                return;
-            }
+            window.stopTelemetry = () => {
+                console.log('⏸️ Stopping telemetry...');
+                window.dashboardState.telemetryActive = false;
+                updateUI();
+                showModal(
+                    '⏸️ Telemetry Paused',
+                    'Telemetry tracking has been paused. Click Start to resume.',
+                    '⏸️'
+                );
+                addLog('info', 'Telemetry paused');
+            };
 
-            const url = document.getElementById('testUrl').value;
-            if (!url) {
-                alert('Please enter a URL!');
-                return;
-            }
+            window.clearLogs = () => {
+                console.log('🗑️ Clearing logs...');
+                window.dashboardState.events = [];
+                window.dashboardState.performanceData = [];
+                document.getElementById('logs').innerHTML = '';
+                document.getElementById('timeline').innerHTML = '';
+                document.getElementById('eventDetails').textContent = 'Logs cleared.';
+                updateStats();
+                showModal(
+                    '🗑️ Logs Cleared',
+                    'All telemetry data has been cleared.',
+                    '✨'
+                );
+            };
 
-            try {
-                const playableUrl = await client.getPlayableUrl(url);
-                console.log('Playable URL:', playableUrl);
-                addLog('info', `URL converted successfully: ${url}`);
-            } catch (error) {
-                addLog('error', `Failed to convert URL: ${error.message}`);
-            }
-        };
+            window.exportData = () => {
+                console.log('💾 Exporting data...');
+                const data = {
+                    events: window.dashboardState.events,
+                    performanceData: window.dashboardState.performanceData,
+                    timestamp: new Date().toISOString(),
+                    stats: getStats()
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `telemetry-${Date.now()}.json`;
+                a.click();
+                showModal(
+                    '💾 Data Exported',
+                    `Telemetry data saved with ${window.dashboardState.events.length} events.`,
+                    '✅'
+                );
+            };
 
-        function handleTelemetryEvent(event) {
-            events.push(event);
+            // Test URL
+            window.testUrl = async () => {
+                if (!window.dashboardState.client) {
+                    showModal('⚠️ Not Ready', 'Please start telemetry first before testing URLs!', '⚠️');
+                    return;
+                }
 
-            if (event.type === 'performance') {
-                performanceData.push(event);
-                updatePerformanceMetrics();
-            }
+                const targetUrl = document.getElementById('testUrl').value;
+                if (!targetUrl) {
+                    showModal('⚠️ Missing URL', 'Please enter a URL to test!', '⚠️');
+                    return;
+                }
 
-            addTimelineEntry(event);
-            updateStats();
-            updateEventDetails(event);
-        }
+                console.log('🧪 Testing URL:', targetUrl);
+                addLog('info', `Testing URL: ${targetUrl}`);
+
+                try {
+                    const playableUrl = await window.dashboardState.client.getPlayableUrl(targetUrl);
+                    console.log('✅ Playable URL:', playableUrl);
+                    addLog('info', `URL converted successfully: ${targetUrl} → ${playableUrl}`);
+                    showModal('✅ URL Converted', `Successfully converted URL! Check the logs for details.`, '🎵');
+                } catch (error) {
+                    console.error('❌ URL test failed:', error);
+                    addLog('error', `Failed to convert URL: ${error.message}`);
+                    showModal('❌ Conversion Failed', `Error: ${error.message}`, '⚠️');
+                }
+            };
 
         function addLog(level, message) {
             const logsContainer = document.getElementById('logs');
@@ -525,12 +671,13 @@
             entry.className = 'timeline-entry';
 
             const categoryBadge = getCategoryBadge(event.type);
+            const safeEventType = escapeHtml(event.type);
 
             entry.innerHTML = `
                 <div class="timeline-time">${new Date(event.timestamp).toLocaleTimeString()}</div>
                 <div class="timeline-event">
                     ${categoryBadge}
-                    <span>${event.type}</span>
+                    <span>${safeEventType}</span>
                 </div>
             `;
 
@@ -562,25 +709,19 @@
         }
 
         function getStats() {
-            const total = events.length;
-            const errors = events.filter(e => e.type === 'error').length;
-            const perfEvents = performanceData.filter(e => e.data?.duration);
-            const avgDuration = perfEvents.length > 0
-                ? (perfEvents.reduce((sum, e) => sum + e.data.duration, 0) / perfEvents.length).toFixed(0)
+            const totalEvents = window.dashboardState.events.length;
+            const errors = window.dashboardState.events.filter(e => e.type === 'error').length;
+            const avgResponse = window.dashboardState.performanceData.length
+                ? (window.dashboardState.performanceData.reduce((sum, e) => sum + (e.duration || 0), 0) / window.dashboardState.performanceData.length).toFixed(2)
                 : '-';
-            const successRate = total > 0 ? (((total - errors) / total) * 100).toFixed(1) : '100';
+            const successRate = totalEvents > 0 ? (((totalEvents - errors) / totalEvents) * 100).toFixed(1) : '100';
 
-            return {
-                total,
-                errors,
-                avgResponse: avgDuration !== '-' ? `${avgDuration}ms` : '-',
-                successRate: `${successRate}%`
-            };
+            return { totalEvents, errors, avgResponse, successRate };
         }
 
         function updatePerformanceMetrics() {
             const container = document.getElementById('performanceMetrics');
-            const recent = performanceData.slice(-10);
+            const recent = window.dashboardState.performanceData.slice(-10);
 
             if (recent.length === 0) {
                 container.innerHTML = '<p style="color: #999;">No performance data yet</p>';
@@ -589,10 +730,12 @@
 
             let html = '<div style="font-size: 0.9em;">';
             recent.reverse().forEach(event => {
-                const label = event.data?.label || 'Operation';
-                const duration = event.data?.duration?.toFixed(2) || '?';
+                const label = event.data?.label || event.operation || 'Operation';
+                const duration = event.data?.duration?.toFixed(2) || event.duration?.toFixed(2) || '?';
+                const safeLabel = escapeHtml(label);
+                const safeDuration = escapeHtml(duration);
                 html += `<div style="padding: 8px; margin-bottom: 4px; background: #f8f9fa; border-radius: 4px; color: #1a1a1a;">
-                    <strong style="color: #667eea;">${label}:</strong> <span style="color: #2d3748;">${duration}ms</span>
+                    <strong style="color: #667eea;">${safeLabel}:</strong> <span style="color: #2d3748;">${safeDuration}ms</span>
                 </div>`;
             });
             html += '</div>';
@@ -613,27 +756,33 @@
         window.updatePlaygroundConfig = () => {
             // Config updated - visual feedback only
         };
+    window.applyPlaygroundConfig = () => {
+                const autoStart = document.getElementById('autoStart').checked;
+                const fallback = document.getElementById('fallback').checked;
+                const retryAttempts = parseInt(document.getElementById('retryAttempts').value);
 
-        window.applyPlaygroundConfig = () => {
-            const autoStart = document.getElementById('autoStart').checked;
-            const fallback = document.getElementById('fallback').checked;
-            const retryAttempts = parseInt(document.getElementById('retryAttempts').value);
+                console.log('⚙️ Applying configuration...', { autoStart, fallback, retryAttempts });
 
-            client = createAudioClient({
-                proxyUrl: 'http://localhost:3002',
-                autoStartProxy: autoStart,
-                fallbackToOriginal: fallback,
-                retryAttempts,
-                telemetry: {
-                    enabled: true,
-                    trackPerformance: true,
-                    trackErrors: true,
-                    onEvent: handleTelemetryEvent
-                }
-            });
+                window.dashboardState.client = createAudioClient({
+                    proxyUrl: 'http://localhost:3002',
+                    autoStartProxy: autoStart,
+                    fallbackToOriginal: fallback,
+                    retryAttempts,
+                    telemetry: {
+                        enabled: true,
+                        trackPerformance: true,
+                        trackErrors: true,
+                        onEvent: handleTelemetryEvent
+                    }
+                });
 
-            addLog('info', `Configuration applied: autoStart=${autoStart}, fallback=${fallback}, retries=${retryAttempts}`);
-            alert('Configuration applied! Test a URL to see the new behavior.');
+                addLog('info', `Configuration applied: autoStart=${autoStart}, fallback=${fallback}, retries=${retryAttempts}`);
+                showModal(
+                    '⚙️ Configuration Applied',
+                    `Settings updated successfully. Test a URL to see the new behavior.`,
+                    '✅'
+                );
+                alert('Configuration applied! Test a URL to see the new behavior.');
         };
 
         window.generateCode = () => {
@@ -641,83 +790,28 @@
             const codeArea = document.getElementById('generatedCode');
 
             const codes = {
-                vanilla: `// Vanilla JavaScript
-import { createAudioClient } from 'desktop-audio-proxy';
+                vanilla: `// Vanilla JavaScript\nimport { createAudioClient } from 'desktop-audio-proxy';\n\nconst client = createAudioClient({\n  autoStartProxy: ${document.getElementById('autoStart').checked},\n  fallbackToOriginal: ${document.getElementById('fallback').checked},\n  retryAttempts: ${document.getElementById('retryAttempts').value}\n});\n\nconst playableUrl = await client.getPlayableUrl('your-audio-url.mp3');\naudioElement.src = playableUrl;`,
 
-const client = createAudioClient({
-  autoStartProxy: ${document.getElementById('autoStart').checked},
-  fallbackToOriginal: ${document.getElementById('fallback').checked},
-  retryAttempts: ${document.getElementById('retryAttempts').value}
-});
+                react: `// React Component\nimport { useAudioProxy } from 'desktop-audio-proxy/react';\n\nfunction AudioPlayer({ url }) {\n  const { audioUrl, isLoading, error, retry } = useAudioProxy(url, {\n    autoStartProxy: ${document.getElementById('autoStart').checked},\n    fallbackToOriginal: ${document.getElementById('fallback').checked},\n    retryAttempts: ${document.getElementById('retryAttempts').value}\n  });\n\n  if (isLoading) return <div>Loading...</div>;\n  if (error) return <div>Error: {error} <button onClick={retry}>Retry</button></div>;\n\n  return <audio src={audioUrl} controls />;\n}`,
 
-const playableUrl = await client.getPlayableUrl('your-audio-url.mp3');
-audioElement.src = playableUrl;`,
+                vue: `<!-- Vue Component -->\n<script setup>\nimport { useAudioProxy } from 'desktop-audio-proxy/vue';\n\nconst { audioUrl, isLoading, error, retry } = useAudioProxy(audioUrl, {\n  autoStartProxy: ${document.getElementById('autoStart').checked},\n  fallbackToOriginal: ${document.getElementById('fallback').checked},\n  retryAttempts: ${document.getElementById('retryAttempts').value}\n});\n<\/script>\n\n<template>\n  <div v-if="isLoading">Loading...</div>\n  <div v-else-if="error">{{ error }} <button @click="retry">Retry</button></div>\n  <audio v-else :src="audioUrl" controls></audio>\n</template>`,
 
-                react: `// React Component
-import { useAudioProxy } from 'desktop-audio-proxy/react';
+                tauri: `// Tauri Integration\nimport { TauriAudioService } from 'desktop-audio-proxy';\n\nconst audioService = new TauriAudioService({\n  autoStartProxy: ${document.getElementById('autoStart').checked},\n  fallbackToOriginal: ${document.getElementById('fallback').checked},\n  retryAttempts: ${document.getElementById('retryAttempts').value}\n});\n\nconst streamUrl = await audioService.getStreamableUrl(originalUrl);\naudioElement.src = streamUrl;`,
 
-function AudioPlayer({ url }) {
-  const { audioUrl, isLoading, error, retry } = useAudioProxy(url, {
-    autoStartProxy: ${document.getElementById('autoStart').checked},
-    fallbackToOriginal: ${document.getElementById('fallback').checked},
-    retryAttempts: ${document.getElementById('retryAttempts').value}
-  });
-
-  if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error} <button onClick={retry}>Retry</button></div>;
-
-  return <audio src={audioUrl} controls />;
-}`,
-
-                vue: `<!-- Vue Component -->
-<script setup>
-import { useAudioProxy } from 'desktop-audio-proxy/vue';
-
-const { audioUrl, isLoading, error, retry } = useAudioProxy(audioUrl, {
-  autoStartProxy: ${document.getElementById('autoStart').checked},
-  fallbackToOriginal: ${document.getElementById('fallback').checked},
-  retryAttempts: ${document.getElementById('retryAttempts').value}
-});
-<\/script>
-
-<template>
-  <div v-if="isLoading">Loading...</div>
-  <div v-else-if="error">{{ error }} <button @click="retry">Retry</button></div>
-  <audio v-else :src="audioUrl" controls></audio>
-</template>`,
-
-                tauri: `// Tauri Integration
-import { TauriAudioService } from 'desktop-audio-proxy';
-
-const audioService = new TauriAudioService({
-  autoStartProxy: ${document.getElementById('autoStart').checked},
-  fallbackToOriginal: ${document.getElementById('fallback').checked},
-  retryAttempts: ${document.getElementById('retryAttempts').value}
-});
-
-const streamUrl = await audioService.getStreamableUrl(originalUrl);
-audioElement.src = streamUrl;`,
-
-                electron: `// Electron Integration
-import { ElectronAudioService } from 'desktop-audio-proxy';
-
-const audioService = new ElectronAudioService({
-  autoStartProxy: ${document.getElementById('autoStart').checked},
-  fallbackToOriginal: ${document.getElementById('fallback').checked},
-  retryAttempts: ${document.getElementById('retryAttempts').value}
-});
-
-const streamUrl = await audioService.getStreamableUrl(originalUrl);
-audioElement.src = streamUrl;`
+                electron: `// Electron Integration\nimport { ElectronAudioService } from 'desktop-audio-proxy';\n\nconst audioService = new ElectronAudioService({\n  autoStartProxy: ${document.getElementById('autoStart').checked},\n  fallbackToOriginal: ${document.getElementById('fallback').checked},\n  retryAttempts: ${document.getElementById('retryAttempts').value}\n});\n\nconst streamUrl = await audioService.getStreamableUrl(originalUrl);\naudioElement.src = streamUrl;`
             };
 
-            codeArea.textContent = codes[framework];
+            codeArea.textContent = codes[framework] || '// No code for this framework.';
         };
 
+        // copyCode helper (single implementation)
         window.copyCode = () => {
             const code = document.getElementById('generatedCode').textContent;
             navigator.clipboard.writeText(code).then(() => {
-                alert('Code copied to clipboard!');
+                showModal('📋 Copied!', 'Code has been copied to your clipboard.', '✅');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showModal('❌ Copy Failed', 'Failed to copy code to clipboard. Please copy manually.', '⚠️');
             });
         };
 

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Desktop Audio Proxy — React Video Demo</title>
+    <link rel="stylesheet" href="styles-bandonker-signature.css">
+    <style>
+      body { font-family: Inter, system-ui, -apple-system, sans-serif; margin: 24px; }
+      .container { max-width: 1000px; margin: 0 auto; }
+      .controls { display:flex; gap:8px; align-items:center; margin-bottom:12px }
+      input[type="url"] { flex:1; padding:8px; font-size:14px }
+      button { padding:8px 12px }
+      video { width:100%; max-width:900px; background:#000; border-radius:6px }
+      .meta { margin-top:12px; font-size:13px; color:#444 }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>React Video Demo (Rendered)</h1>
+      <p>Uses the running demo's audio client to create a playable URL and plays video through the proxy.</p>
+
+      <div id="root"></div>
+    </div>
+
+    <!-- Ensure demo internals are available (provides window.dapDemo.audioClient) -->
+    <script type="module" src="demo-full.js"></script>
+
+    <!-- Bundle built from the example (run `node scripts/build-react-demo.mjs` to produce) -->
+    <script src="react-player.bundle.js"></script>
+  </body>
+</html>

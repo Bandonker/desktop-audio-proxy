@@ -6,9 +6,14 @@ import {
 import { ProxyConfig } from '../types';
 import axios from 'axios';
 import { createServer as createNetServer } from 'net';
+import { AxiosError } from 'axios';
 
 interface ServerAddress {
   port: number;
+}
+
+interface ErrorResponseBody {
+  error: string;
 }
 
 async function getAvailablePort(): Promise<number> {
@@ -66,9 +71,10 @@ describe('AudioProxyServer - Coverage Tests', () => {
       try {
         await axios.get(`${server.getProxyUrl()}/info`);
         fail('Should have thrown an error');
-      } catch (error: any) {
-        expect(error.response.status).toBe(400);
-        expect(error.response.data.error).toBe('URL parameter required');
+      } catch (error: unknown) {
+        const axiosError = error as AxiosError<ErrorResponseBody>;
+        expect(axiosError.response?.status).toBe(400);
+        expect(axiosError.response?.data.error).toBe('URL parameter required');
       }
     });
 
@@ -79,9 +85,10 @@ describe('AudioProxyServer - Coverage Tests', () => {
       try {
         await axios.get(`${server.getProxyUrl()}/proxy`);
         fail('Should have thrown an error');
-      } catch (error: any) {
-        expect(error.response.status).toBe(400);
-        expect(error.response.data.error).toBe('URL parameter required');
+      } catch (error: unknown) {
+        const axiosError = error as AxiosError<ErrorResponseBody>;
+        expect(axiosError.response?.status).toBe(400);
+        expect(axiosError.response?.data.error).toBe('URL parameter required');
       }
     });
   });

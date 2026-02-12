@@ -11,6 +11,10 @@ interface AutoStartedProxyServer {
   stop: () => Promise<void>;
 }
 
+type StartProxyServerFn = (
+  config?: Record<string, unknown>
+) => Promise<AutoStartedProxyServer>;
+
 const WINDOWS_PATH_REGEX = /^[a-zA-Z]:\\/;
 
 // Type declarations for window objects
@@ -128,8 +132,20 @@ export class AudioProxyClient {
     }
 
     try {
-      // Dynamically import server-impl (only available in Node.js)
-      const { startProxyServer } = await import('./server-impl');
+      // Use indirect dynamic import so browser-targeted bundles don't pull in
+      // Node-only server dependencies (express/cors/net).
+      const dynamicImport = new Function(
+        'modulePath',
+        'return import(modulePath);'
+      ) as (modulePath: string) => Promise<{
+        startProxyServer?: StartProxyServerFn;
+      }>;
+      const serverModule = await dynamicImport('./server-impl');
+
+      if (typeof serverModule.startProxyServer !== 'function') {
+        throw new Error('startProxyServer export not found in server module');
+      }
+      const startProxyServer = serverModule.startProxyServer;
 
       const url = new URL(this.options.proxyUrl);
       const port = Number.parseInt(url.port, 10) || 3002;

@@ -5,6 +5,8 @@ export interface ProxyConfig {
   timeout?: number;
   maxRedirects?: number;
   userAgent?: string;
+  allowedProtocols?: Array<'http' | 'https'>;
+  allowPrivateAddresses?: boolean;
   enableLogging?: boolean;
   enableTranscoding?: boolean;
   cacheEnabled?: boolean;

@@ -9,6 +9,7 @@
  */
 
 import { createAudioClient, startProxyServer } from 'desktop-audio-proxy';
+import url from 'url';
 
 // Example 1: Basic Video Streaming (MP4)
 async function basicVideoStreaming() {
@@ -208,7 +209,7 @@ async function runAllExamples() {
 }
 
 // Run examples if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && url.pathToFileURL(process.argv[1]).href === import.meta.url) {
   runAllExamples();
 }
 

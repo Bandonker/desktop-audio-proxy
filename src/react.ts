@@ -8,11 +8,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import {
-  AudioProxyClient,
-  TauriAudioService,
-  ElectronAudioService,
-} from './index';
+import { AudioProxyClient } from './client';
+import { TauriAudioService } from './tauri-service';
+import { ElectronAudioService } from './electron-service';
 import { AudioProxyOptions, StreamInfo, Environment } from './types';
 
 type DesktopAudioService = TauriAudioService | ElectronAudioService;
@@ -352,4 +350,21 @@ export function useAudioProxyContext() {
     );
   }
   return context;
+}
+
+/**
+ * Simplified hook that returns a playable URL from an audio file path
+ * Wrapper around useAudioProxy with a cleaner API
+ */
+export function useAudioUrl(url: string | null, options?: AudioProxyOptions) {
+  const result = useAudioProxy(url, options);
+
+  return {
+    playableUrl: result.audioUrl,
+    loading: result.isLoading,
+    error: result.error ? new Error(result.error) : null,
+    streamInfo: result.streamInfo,
+    retry: result.retry,
+    client: result.client,
+  };
 }

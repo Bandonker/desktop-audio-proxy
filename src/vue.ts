@@ -1,5 +1,6 @@
 import {
   ref,
+  isRef,
   watch,
   onMounted,
   inject,
@@ -7,11 +8,9 @@ import {
   type Ref,
   type App,
 } from 'vue';
-import {
-  AudioProxyClient,
-  TauriAudioService,
-  ElectronAudioService,
-} from './index';
+import { AudioProxyClient } from './client';
+import { TauriAudioService } from './tauri-service';
+import { ElectronAudioService } from './electron-service';
 import { AudioProxyOptions, StreamInfo, Environment } from './types';
 
 type DesktopAudioService = TauriAudioService | ElectronAudioService;
@@ -57,7 +56,7 @@ export function useAudioProxy(
   const streamInfo = ref<StreamInfo | null>(null);
 
   // Create reactive URL ref if needed
-  const urlRef = ref(url);
+  const urlRef = isRef(url) ? (url as Ref<string | null>) : ref(url);
   const client = new AudioProxyClient(options);
 
   const processUrl = async (inputUrl: string) => {
@@ -90,7 +89,7 @@ export function useAudioProxy(
   // Watch for URL changes
   watch(
     urlRef,
-    (newUrl: string) => {
+    (newUrl: string | null) => {
       if (newUrl) {
         processUrl(newUrl);
       } else {
@@ -265,7 +264,9 @@ export function useAudioMetadata(filePath: Ref<string | null> | string | null) {
   const isLoading = ref(false);
   const error = ref<string | null>(null);
 
-  const filePathRef = ref(filePath);
+  const filePathRef = isRef(filePath)
+    ? (filePath as Ref<string | null>)
+    : ref(filePath);
   const client = new AudioProxyClient();
 
   const getMetadata = async (path: string) => {
@@ -293,7 +294,7 @@ export function useAudioMetadata(filePath: Ref<string | null> | string | null) {
 
   watch(
     filePathRef,
-    (newPath: string) => {
+    (newPath: string | null) => {
       if (newPath) {
         getMetadata(newPath);
       } else {

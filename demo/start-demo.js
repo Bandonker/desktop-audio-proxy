@@ -9,8 +9,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import http from 'http';
 import fs from 'fs';
-import url from 'url';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, URL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,12 +31,19 @@ const mimeTypes = {
     '.map': 'application/json'
 };
 
+const legacyRedirects = {
+    '/examples/react-video-player.tsx': '/examples/react-example.tsx'
+};
+
 class DemoServer {
     constructor() {
         this.proxyProcess = null;
         this.webServer = null;
         this.demoPort = 8080;
         this.proxyPort = 3002;
+        this.projectRoot = path.join(__dirname, '..');
+        this.npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        this.nodeCommand = process.execPath;
     }
 
     async start() {
@@ -70,9 +76,22 @@ class DemoServer {
 
     buildLibrary() {
         return new Promise((resolve, reject) => {
-            const build = spawn('npm', ['run', 'build'], {
-                cwd: path.join(__dirname, '..'),
-                stdio: 'inherit'
+            const command = process.platform === 'win32' ? 'cmd.exe' : this.npmCommand;
+            const args = process.platform === 'win32'
+                ? ['/d', '/s', '/c', 'npm run build']
+                : ['run', 'build'];
+
+            const build = spawn(command, args, {
+                cwd: this.projectRoot,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+
+            build.stdout.on('data', (data) => {
+                process.stdout.write(data);
+            });
+
+            build.stderr.on('data', (data) => {
+                process.stderr.write(data);
             });
 
             build.on('close', (code) => {
@@ -87,9 +106,24 @@ class DemoServer {
 
     startProxyServer() {
         return new Promise((resolve, reject) => {
+            let settled = false;
+            const timeoutId = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    reject(new Error('Proxy server startup timeout'));
+                }
+            }, 30000);
+
+            const finish = (fn, value) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutId);
+                fn(value);
+            };
+
             // Start the proxy server
-            this.proxyProcess = spawn('node', ['examples/standalone-server.js'], {
-                cwd: path.join(__dirname, '..'),
+            this.proxyProcess = spawn(this.nodeCommand, ['examples/standalone-server.js'], {
+                cwd: this.projectRoot,
                 stdio: 'pipe'
             });
 
@@ -97,15 +131,20 @@ class DemoServer {
                 const output = data.toString();
                 console.log(`[Proxy] ${output.trim()}`);
                 
-                // Extract the actual port from the output
-                const portMatch = output.match(/http:\/\/localhost:(\d+)/);
-                if (portMatch) {
-                    this.proxyPort = parseInt(portMatch[1]);
+                // Extract the actual runtime port first (e.g. running on http://0.0.0.0:3003)
+                const runtimePortMatch = output.match(/running on http:\/\/(?:0\.0\.0\.0|localhost):(\d+)/i);
+                if (runtimePortMatch) {
+                    this.proxyPort = parseInt(runtimePortMatch[1], 10);
                     console.log(`[Proxy] Detected actual proxy port: ${this.proxyPort}`);
+                } else {
+                    const healthPortMatch = output.match(/health check:\s*http:\/\/localhost:(\d+)/i);
+                    if (healthPortMatch) {
+                        this.proxyPort = parseInt(healthPortMatch[1], 10);
+                    }
                 }
                 
-                if (output.includes('Server started successfully') || output.includes('running on http://localhost')) {
-                    resolve();
+                if (output.includes('Server started successfully')) {
+                    finish(resolve);
                 }
             });
 
@@ -114,50 +153,85 @@ class DemoServer {
             });
 
             this.proxyProcess.on('close', (code) => {
-                if (code !== 0) {
-                    reject(new Error(`Proxy server exited with code ${code}`));
+                if (!settled && code !== 0) {
+                    finish(reject, new Error(`Proxy server exited with code ${code}`));
                 }
             });
-
-            // Timeout if proxy doesn't start
-            setTimeout(() => {
-                reject(new Error('Proxy server startup timeout'));
-            }, 10000);
+            
+            this.proxyProcess.on('spawn', () => {
+                console.log('[Proxy] Process spawned successfully');
+            });
         });
     }
 
     startWebServer() {
+        console.log(`🌐 Server attempting to start on port ${this.demoPort}...`);
         return new Promise((resolve, reject) => {
             this.webServer = http.createServer((req, res) => {
                 this.handleRequest(req, res);
             });
 
-            this.webServer.listen(this.demoPort, (err) => {
-                if (err) {
-                    reject(err);
+            this.webServer.on('error', (err) => {
+                if (err.code === 'EADDRINUSE') {
+                    console.log(`⚠️  Port ${this.demoPort} is in use, trying next port...`);
+                    this.demoPort++;
+                    this.webServer.listen(this.demoPort);
                 } else {
-                    resolve();
+                    console.error('❌ Web server error:', err);
+                    reject(err);
                 }
             });
+
+            this.webServer.on('listening', () => {
+                console.log(`✅ Web server is now listening on port ${this.demoPort}`);
+                resolve();
+            });
+
+            this.webServer.listen(this.demoPort);
         });
     }
 
     handleRequest(req, res) {
-        let pathname = url.parse(req.url).pathname;
+        const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        let pathname;
+        try {
+            pathname = decodeURIComponent(parsedUrl.pathname);
+        } catch {
+            res.writeHead(400);
+            res.end('Invalid URL encoding');
+            return;
+        }
+
+        // Backward compatibility redirects for moved demo/example files.
+        if (legacyRedirects[pathname]) {
+            const location = legacyRedirects[pathname];
+            console.log(`[WebServer] ${req.method} ${pathname} -> 302 ${location}`);
+            res.writeHead(302, { Location: location });
+            res.end(`Redirecting to ${location}`);
+            return;
+        }
         
         // Default to index.html
         if (pathname === '/') {
             pathname = '/index.html';
         }
 
-        // Handle requests for dist files (go up one directory)
-        let filePath;
-        if (pathname.startsWith('/dist/')) {
-            filePath = path.join(__dirname, '..', pathname);
-        } else if (pathname.startsWith('/assets/')) {
-            filePath = path.join(__dirname, '..', pathname);
+        // Handle requests for dist, assets, and examples files (go up one directory)
+        let baseDir;
+        if (pathname.startsWith('/dist/') || pathname.startsWith('/assets/') || pathname.startsWith('/examples/')) {
+            baseDir = this.projectRoot;
         } else {
-            filePath = path.join(__dirname, pathname);
+            baseDir = __dirname;
+        }
+
+        const normalizedPath = path.normalize(pathname).replace(/^[/\\]+/, '');
+        const filePath = path.resolve(baseDir, normalizedPath);
+        const resolvedBaseDir = path.resolve(baseDir);
+        if (!filePath.startsWith(resolvedBaseDir + path.sep) && filePath !== resolvedBaseDir) {
+            console.error(`[WebServer] ❌ Path traversal blocked: ${pathname}`);
+            res.writeHead(403);
+            res.end('Forbidden');
+            return;
         }
 
         const ext = path.parse(filePath).ext;
@@ -167,6 +241,8 @@ class DemoServer {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Referrer-Policy', 'no-referrer');
 
         if (req.method === 'OPTIONS') {
             res.writeHead(200);
@@ -174,21 +250,27 @@ class DemoServer {
             return;
         }
 
+        // Log the request with more detail
         console.log(`[WebServer] ${req.method} ${pathname} -> ${filePath} (${mimeType})`);
+
+        if (!fs.existsSync(filePath)) {
+            console.error(`[WebServer] ❌ File not found: ${filePath}`);
+            res.writeHead(404);
+            res.end(`File not found: ${pathname}`);
+            return;
+        }
 
         fs.readFile(filePath, (err, data) => {
             if (err) {
-                if (err.code === 'ENOENT') {
-                    console.error(`[WebServer] File not found: ${filePath}`);
-                    res.writeHead(404);
-                    res.end('File not found');
-                } else {
-                    console.error(`[WebServer] Server error: ${err.message}`);
-                    res.writeHead(500);
-                    res.end('Server error');
-                }
+                console.error(`[WebServer] ❌ Server error reading ${filePath}: ${err.message}`);
+                res.writeHead(500);
+                res.end(`Server error: ${err.message}`);
             } else {
-                res.writeHead(200, { 'Content-Type': mimeType });
+                res.writeHead(200, { 
+                    'Content-Type': mimeType,
+                    'Content-Length': data.length,
+                    'Cache-Control': 'no-cache'
+                });
                 res.end(data);
             }
         });
@@ -232,10 +314,12 @@ class DemoServer {
     }
 }
 
-// Start demo if this file is run directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-    const demo = new DemoServer();
-    demo.start().catch(console.error);
-}
+// Start demo
+console.log('Script starting...');
+const demo = new DemoServer();
+demo.start().catch(err => {
+    console.error('Fatal error starting demo:', err);
+    process.exit(1);
+});
 
 export default DemoServer;

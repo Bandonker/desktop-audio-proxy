@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import axios, { AxiosResponse } from 'axios';
 import { Readable } from 'stream';
-import { createServer } from 'net';
+import { createServer, isIP } from 'net';
 import { Server as HttpServer } from 'http';
 import { ProxyConfig } from './types';
 
@@ -11,6 +11,7 @@ const DEFAULT_HOST = 'localhost';
 const DEFAULT_TIMEOUT = 60000;
 const DEFAULT_MAX_REDIRECTS = 10;
 const DEFAULT_USER_AGENT = 'AudioProxy/1.0';
+const DEFAULT_ALLOWED_PROTOCOLS: Array<'http' | 'https'> = ['http', 'https'];
 const DEFAULT_CACHE_TTL = 3600;
 const DEFAULT_ACCEPT_HEADER = 'audio/*,*/*;q=0.1';
 const DEFAULT_ACCEPT_LANGUAGE_HEADER = 'en-US,en;q=0.9';
@@ -43,6 +44,29 @@ interface NormalizedError {
     message?: string;
     url: string;
   };
+}
+
+interface InfoResponsePayload {
+  url: string;
+  status: number;
+  headers: Record<string, unknown>;
+  contentType?: string;
+  contentLength?: string;
+  acceptRanges?: string;
+  lastModified?: string;
+}
+
+interface CachedInfoEntry {
+  expiresAt: number;
+  payload: InfoResponsePayload;
+}
+
+interface RequestUrlValidationResult {
+  valid: boolean;
+  status: number;
+  url?: string;
+  error?: string;
+  message?: string;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -109,8 +133,14 @@ export class AudioProxyServer {
   private server: HttpServer | null = null;
   private config: Required<ProxyConfig>;
   private actualPort: number = 0;
+  private infoCache: Map<string, CachedInfoEntry> = new Map();
 
   constructor(config: ProxyConfig = {}) {
+    const allowedProtocols =
+      config.allowedProtocols && config.allowedProtocols.length > 0
+        ? config.allowedProtocols
+        : DEFAULT_ALLOWED_PROTOCOLS;
+
     this.config = {
       port: config.port || DEFAULT_PORT,
       host: config.host || DEFAULT_HOST,
@@ -118,6 +148,8 @@ export class AudioProxyServer {
       timeout: config.timeout || DEFAULT_TIMEOUT,
       maxRedirects: config.maxRedirects || DEFAULT_MAX_REDIRECTS,
       userAgent: config.userAgent || DEFAULT_USER_AGENT,
+      allowedProtocols,
+      allowPrivateAddresses: config.allowPrivateAddresses ?? false,
       enableLogging: config.enableLogging ?? true,
       enableTranscoding: config.enableTranscoding ?? false,
       cacheEnabled: config.cacheEnabled ?? true,
@@ -173,6 +205,8 @@ export class AudioProxyServer {
         config: {
           port: this.actualPort || this.config.port,
           configuredPort: this.config.port,
+          allowedProtocols: this.config.allowedProtocols,
+          allowPrivateAddresses: this.config.allowPrivateAddresses,
           enableTranscoding: this.config.enableTranscoding,
           cacheEnabled: this.config.cacheEnabled,
         },
@@ -181,9 +215,20 @@ export class AudioProxyServer {
 
     // Info endpoint
     this.app.get('/info', async (req: Request, res: Response) => {
-      const url = this.getRequestUrl(req);
-      if (!url) {
-        return res.status(400).json({ error: 'URL parameter required' });
+      const validationResult = this.getRequestUrl(req);
+      if (!validationResult.valid || !validationResult.url) {
+        return res.status(validationResult.status).json({
+          error: validationResult.error || 'Invalid URL parameter',
+          ...(validationResult.message
+            ? { message: validationResult.message }
+            : {}),
+        });
+      }
+      const url = validationResult.url;
+
+      const cachedInfo = this.getCachedInfo(url);
+      if (cachedInfo) {
+        return res.json(cachedInfo);
       }
 
       try {
@@ -200,7 +245,7 @@ export class AudioProxyServer {
           validateStatus: (status: number) => status < 400,
         });
 
-        return res.json({
+        const payload: InfoResponsePayload = {
           url,
           status: response.status,
           headers: response.headers,
@@ -208,7 +253,11 @@ export class AudioProxyServer {
           contentLength: response.headers['content-length'],
           acceptRanges: response.headers['accept-ranges'],
           lastModified: response.headers['last-modified'],
-        });
+        };
+
+        this.setCachedInfo(url, payload);
+
+        return res.json(payload);
       } catch (error: unknown) {
         console.error('[AudioProxy] Info error:', error);
         const normalizedError = this.normalizeRequestError(error, url, 'info');
@@ -218,10 +267,16 @@ export class AudioProxyServer {
 
     // Proxy endpoint
     this.app.get('/proxy', async (req: Request, res: Response) => {
-      const url = this.getRequestUrl(req);
-      if (!url) {
-        return res.status(400).json({ error: 'URL parameter required' });
+      const validationResult = this.getRequestUrl(req);
+      if (!validationResult.valid || !validationResult.url) {
+        return res.status(validationResult.status).json({
+          error: validationResult.error || 'Invalid URL parameter',
+          ...(validationResult.message
+            ? { message: validationResult.message }
+            : {}),
+        });
       }
+      const url = validationResult.url;
 
       try {
         // Set CORS headers immediately
@@ -363,13 +418,148 @@ export class AudioProxyServer {
     return !res.headersSent && !res.writableEnded;
   }
 
-  private getRequestUrl(req: Request): string | null {
+  private getRequestUrl(req: Request): RequestUrlValidationResult {
     if (typeof req.query.url !== 'string') {
-      return null;
+      return {
+        valid: false,
+        status: 400,
+        error: 'URL parameter required',
+      };
     }
 
     const normalizedUrl = req.query.url.trim();
-    return normalizedUrl.length > 0 ? normalizedUrl : null;
+    if (normalizedUrl.length === 0) {
+      return {
+        valid: false,
+        status: 400,
+        error: 'URL parameter required',
+      };
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(normalizedUrl);
+    } catch {
+      return {
+        valid: false,
+        status: 400,
+        error: 'Invalid URL parameter',
+        message: 'Only absolute URLs are supported',
+      };
+    }
+
+    const protocol = parsedUrl.protocol.slice(0, -1).toLowerCase();
+    if (!this.config.allowedProtocols.includes(protocol as 'http' | 'https')) {
+      return {
+        valid: false,
+        status: 400,
+        error: 'Unsupported URL protocol',
+        message: `Allowed protocols: ${this.config.allowedProtocols.join(', ')}`,
+      };
+    }
+
+    if (
+      !this.config.allowPrivateAddresses &&
+      this.isPrivateOrLocalHost(parsedUrl.hostname)
+    ) {
+      return {
+        valid: false,
+        status: 403,
+        error: 'Private or local addresses are blocked',
+        message:
+          'Set allowPrivateAddresses=true in ProxyConfig only for trusted local network sources',
+      };
+    }
+
+    return {
+      valid: true,
+      status: 200,
+      url: parsedUrl.toString(),
+    };
+  }
+
+  private getCachedInfo(url: string): InfoResponsePayload | null {
+    if (!this.config.cacheEnabled) {
+      return null;
+    }
+
+    const cachedEntry = this.infoCache.get(url);
+    if (!cachedEntry) {
+      return null;
+    }
+
+    if (cachedEntry.expiresAt <= Date.now()) {
+      this.infoCache.delete(url);
+      return null;
+    }
+
+    return cachedEntry.payload;
+  }
+
+  private setCachedInfo(url: string, payload: InfoResponsePayload): void {
+    if (!this.config.cacheEnabled) {
+      return;
+    }
+
+    const ttlMs = Math.max(1, this.config.cacheTTL) * 1000;
+    this.infoCache.set(url, {
+      expiresAt: Date.now() + ttlMs,
+      payload,
+    });
+  }
+
+  private isPrivateOrLocalHost(hostname: string): boolean {
+    const normalizedHost = hostname.toLowerCase().replace(/\.$/, '');
+
+    if (
+      normalizedHost === 'localhost' ||
+      normalizedHost.endsWith('.localhost') ||
+      normalizedHost.endsWith('.local')
+    ) {
+      return true;
+    }
+
+    const ipVersion = isIP(normalizedHost);
+
+    if (ipVersion === 0) {
+      return false;
+    }
+
+    if (ipVersion === 4) {
+      const octets = normalizedHost.split('.').map(Number);
+      const first = octets[0];
+      const second = octets[1];
+
+      return (
+        first === 10 ||
+        first === 127 ||
+        first === 0 ||
+        (first === 169 && second === 254) ||
+        (first === 172 && second >= 16 && second <= 31) ||
+        (first === 192 && second === 168)
+      );
+    }
+
+    const compactIpv6 = normalizedHost;
+    if (
+      compactIpv6 === '::1' ||
+      compactIpv6 === '::' ||
+      compactIpv6.startsWith('fe8') ||
+      compactIpv6.startsWith('fe9') ||
+      compactIpv6.startsWith('fea') ||
+      compactIpv6.startsWith('feb') ||
+      compactIpv6.startsWith('fc') ||
+      compactIpv6.startsWith('fd')
+    ) {
+      return true;
+    }
+
+    if (compactIpv6.startsWith('::ffff:')) {
+      const mappedIpv4 = compactIpv6.slice('::ffff:'.length);
+      return this.isPrivateOrLocalHost(mappedIpv4);
+    }
+
+    return false;
   }
 
   private normalizeRequestError(
@@ -482,6 +672,7 @@ export class AudioProxyServer {
 
   public async stop(): Promise<void> {
     return new Promise(resolve => {
+      this.infoCache.clear();
       if (this.server) {
         this.server.close(() => {
           console.log('Desktop Audio Proxy stopped');

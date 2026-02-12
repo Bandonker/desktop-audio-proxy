@@ -86,7 +86,7 @@ const audioService = new ElectronAudioService({
     fallbackToOriginal: true,
     retryAttempts: 3,
     // Electron-specific configuration
-    proxyConfig: {
+    proxyServerConfig: {
       userAgent: `MyElectronApp/${window.electronAPI?.getAppVersion() || '1.0.0'}`,
       timeout: 10000
     }

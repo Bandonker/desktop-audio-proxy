@@ -230,7 +230,7 @@ ${c.cyan}┌──────────────────────�
             fallbackToOriginal: true,
             retryAttempts: 3,
             retryDelay: 1000,
-            proxyConfig: {
+            proxyServerConfig: {
                 corsOrigins: '*',
                 timeout: 60000,
                 maxRedirects: 20,

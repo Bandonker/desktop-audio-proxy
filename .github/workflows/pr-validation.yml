@@ -11,22 +11,22 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-      
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20.x'
         cache: 'npm'
-        
+
     - name: Install dependencies
       run: npm ci
-      
+
     - name: Check for package.json changes
       id: package-check
       run: |
@@ -36,64 +36,85 @@ jobs:
         else
           echo "package_changed=false" >> $GITHUB_OUTPUT
         fi
-        
+
     - name: Validate version bump
       if: steps.package-check.outputs.package_changed == 'true'
       run: |
         set -euo pipefail
         CURRENT_VERSION=$(node -p "require('./package.json').version")
         MAIN_VERSION=$(git show "${{ github.event.pull_request.base.sha }}:package.json" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).version));")
-        
+
         echo "Main branch version: $MAIN_VERSION"
         echo "PR version: $CURRENT_VERSION"
-        
+
         if [ "$CURRENT_VERSION" = "$MAIN_VERSION" ]; then
-          echo "❌ Version not bumped in package.json"
+          echo "Version not bumped in package.json"
           exit 1
         else
-          echo "✅ Version properly bumped: $MAIN_VERSION → $CURRENT_VERSION"
+          echo "Version properly bumped: $MAIN_VERSION -> $CURRENT_VERSION"
         fi
 
     - name: Lint quality gate
       run: npm run lint
-         
+
     - name: Build project
       run: npm run build
-      
+
+    - name: Demo route smoke test
+      run: npm run test:demo-smoke
+
     - name: Run tests
       run: npm test -- --runInBand
-      
+
     - name: Check package size
       run: |
         set -euo pipefail
         PACKAGE_FILE=$(npm pack --silent)
         PACKAGE_SIZE_BYTES=$(wc -c < "$PACKAGE_FILE")
-        echo "📦 Package size (bytes): $PACKAGE_SIZE_BYTES"
+        echo "Package size (bytes): $PACKAGE_SIZE_BYTES"
         rm -f "$PACKAGE_FILE"
-        
+
     - name: Validate exports
       run: |
         echo "Validating package exports..."
         node -e "
           const fs = require('fs');
-          
+
           // Check main exports exist
           console.log('Checking main exports...');
           if (!fs.existsSync('./dist/index.cjs')) throw new Error('Missing main CJS build');
           if (!fs.existsSync('./dist/index.esm.js')) throw new Error('Missing main ESM build');
           if (!fs.existsSync('./dist/index.d.ts')) throw new Error('Missing main types');
-          
+
           // Check browser exports exist
           console.log('Checking browser exports...');
           if (!fs.existsSync('./dist/browser.esm.js')) throw new Error('Missing browser ESM build');
           if (!fs.existsSync('./dist/browser.cjs')) throw new Error('Missing browser CJS build');
           if (!fs.existsSync('./dist/browser.d.ts')) throw new Error('Missing browser types');
-          
+
           // Check server exports exist
           console.log('Checking server exports...');
           if (!fs.existsSync('./dist/server.esm.js')) throw new Error('Missing server ESM build');
           if (!fs.existsSync('./dist/server.cjs')) throw new Error('Missing server CJS build');
           if (!fs.existsSync('./dist/server.d.ts')) throw new Error('Missing server types');
-          
-          console.log('✅ All exports validated successfully');
+
+          // Check react exports exist
+          console.log('Checking react exports...');
+          if (!fs.existsSync('./dist/react.esm.js')) throw new Error('Missing react ESM build');
+          if (!fs.existsSync('./dist/react.cjs')) throw new Error('Missing react CJS build');
+          if (!fs.existsSync('./dist/react.d.ts')) throw new Error('Missing react types');
+
+          // Check vue exports exist
+          console.log('Checking vue exports...');
+          if (!fs.existsSync('./dist/vue.esm.js')) throw new Error('Missing vue ESM build');
+          if (!fs.existsSync('./dist/vue.cjs')) throw new Error('Missing vue CJS build');
+          if (!fs.existsSync('./dist/vue.d.ts')) throw new Error('Missing vue types');
+
+          console.log('All exports validated successfully');
         "
+
+    - name: Validate runtime subpath exports
+      run: |
+        node scripts/verify-exports.js
+        node scripts/verify-hook-export.js
+        node scripts/verify-vue-export.js
