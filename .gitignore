@@ -52,10 +52,22 @@ coverage/
 # Cache directories
 .cache/
 .parcel-cache/
+.nyc_output/
+.eslintcache
 
 # Temporary folders
 tmp/
 temp/
+
+# Packaging artifacts
+*.tgz
+
+# Generated demo bundle artifacts
+demo/react-player.bundle.js
+demo/react-player.bundle.js.map
+
+# Common test output artifacts
+junit.xml
 
 # Editor directories and files
 .vscode/*
