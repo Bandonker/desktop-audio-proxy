@@ -408,6 +408,11 @@ function getHeaderString(value: unknown): string | undefined {
   return undefined;
 }
 
+function isIdentityContentEncoding(value: unknown): boolean {
+  const contentEncoding = getHeaderString(value)?.trim().toLowerCase();
+  return !contentEncoding || contentEncoding === 'identity';
+}
+
 function getFinalResponseUrl(
   response: AxiosResponse,
   fallbackUrl: string
@@ -784,7 +789,7 @@ export class AudioProxyServer {
 
         if (
           isHlsPlaylist(finalUrl, normalizedContentType) &&
-          !response.headers['content-encoding'] &&
+          isIdentityContentEncoding(response.headers['content-encoding']) &&
           response.status === 200 &&
           !req.headers.range
         ) {

@@ -625,61 +625,71 @@ describe('AudioProxyServer', () => {
       }
     });
 
-    it('should rewrite and proxy relative HLS segment URLs end to end', async () => {
-      const segmentPayload = Buffer.from('segment-bytes');
-      const { server: upstreamServer, baseUrl } =
-        await startLocalUpstreamServer((req, res) => {
-          if (req.url === '/entry.m3u8') {
-            res.writeHead(302, { Location: '/hls/master.m3u8' });
+    it.each([
+      ['without content encoding', undefined],
+      ['with identity content encoding', 'identity'],
+    ] as const)(
+      'should rewrite and proxy relative HLS segment URLs end to end %s',
+      async (_encodingCase, contentEncoding) => {
+        const segmentPayload = Buffer.from('segment-bytes');
+        const { server: upstreamServer, baseUrl } =
+          await startLocalUpstreamServer((req, res) => {
+            if (req.url === '/entry.m3u8') {
+              res.writeHead(302, { Location: '/hls/master.m3u8' });
+              res.end();
+              return;
+            }
+            if (req.url === '/hls/master.m3u8') {
+              const playlist = '#EXTM3U\n#EXTINF:10,\nsegments/one.ts\n';
+              const headers: Record<string, string> = {
+                'Content-Type': 'application/vnd.apple.mpegurl',
+                'Content-Length': String(Buffer.byteLength(playlist)),
+              };
+              if (contentEncoding) {
+                headers['Content-Encoding'] = contentEncoding;
+              }
+              res.writeHead(200, headers);
+              res.end(playlist);
+              return;
+            }
+            if (req.url === '/hls/segments/one.ts') {
+              res.writeHead(200, {
+                'Content-Type': 'video/mp2t',
+                'Content-Length': String(segmentPayload.length),
+              });
+              res.end(segmentPayload);
+              return;
+            }
+            res.writeHead(404);
             res.end();
-            return;
-          }
-          if (req.url === '/hls/master.m3u8') {
-            const playlist = '#EXTM3U\n#EXTINF:10,\nsegments/one.ts\n';
-            res.writeHead(200, {
-              'Content-Type': 'application/vnd.apple.mpegurl',
-              'Content-Length': String(Buffer.byteLength(playlist)),
-            });
-            res.end(playlist);
-            return;
-          }
-          if (req.url === '/hls/segments/one.ts') {
-            res.writeHead(200, {
-              'Content-Type': 'video/mp2t',
-              'Content-Length': String(segmentPayload.length),
-            });
-            res.end(segmentPayload);
-            return;
-          }
-          res.writeHead(404);
-          res.end();
-        });
+          });
 
-      try {
-        const manifestResponse = await axios.get(
-          `${server.getProxyUrl()}/proxy`,
-          {
-            params: { url: `${baseUrl}/entry.m3u8` },
-          }
-        );
-        const rewrittenSegmentPath = String(manifestResponse.data)
-          .split('\n')
-          .find(line => line.startsWith('/proxy?url='));
+        try {
+          const manifestResponse = await axios.get(
+            `${server.getProxyUrl()}/proxy`,
+            {
+              params: { url: `${baseUrl}/entry.m3u8` },
+            }
+          );
+          const rewrittenSegmentPath = String(manifestResponse.data)
+            .split('\n')
+            .find(line => line.startsWith('/proxy?url='));
 
-        expect(rewrittenSegmentPath).toBeDefined();
-        expect(manifestResponse.headers['content-length']).not.toBe(
-          String(Buffer.byteLength('#EXTM3U\n#EXTINF:10,\nsegments/one.ts\n'))
-        );
+          expect(rewrittenSegmentPath).toBeDefined();
+          expect(manifestResponse.headers['content-length']).not.toBe(
+            String(Buffer.byteLength('#EXTM3U\n#EXTINF:10,\nsegments/one.ts\n'))
+          );
 
-        const segmentResponse = await axios.get(
-          `${server.getProxyUrl()}${rewrittenSegmentPath}`,
-          { responseType: 'arraybuffer' }
-        );
-        expect(Buffer.from(segmentResponse.data)).toEqual(segmentPayload);
-      } finally {
-        await stopLocalUpstreamServer(upstreamServer);
+          const segmentResponse = await axios.get(
+            `${server.getProxyUrl()}${rewrittenSegmentPath}`,
+            { responseType: 'arraybuffer' }
+          );
+          expect(Buffer.from(segmentResponse.data)).toEqual(segmentPayload);
+        } finally {
+          await stopLocalUpstreamServer(upstreamServer);
+        }
       }
-    });
+    );
 
     it('should preserve the upstream base for imported HLS variables', async () => {
       const segmentPayload = Buffer.from('imported-variable-segment');

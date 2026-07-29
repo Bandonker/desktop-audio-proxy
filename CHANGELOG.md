@@ -9,6 +9,7 @@
   variants, segments, and keys.
 - Rejected unfollowed upstream redirects instead of reporting them as playable
   metadata or returning a redirect without a usable destination.
+- Rewrote HLS playlists that explicitly declare identity content encoding.
 - Extended media-controller cancellation across pending proxy resolution and
   `element.play()` calls so stopped, disposed, or superseded work resolves to
   `null`.
