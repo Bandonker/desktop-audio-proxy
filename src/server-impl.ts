@@ -174,6 +174,13 @@ function createNetworkPolicyError(message: string): NodeJS.ErrnoException {
 
 const HLS_VARIABLE_REFERENCE_REGEX = /\{\$([A-Za-z0-9_-]+)\}/g;
 
+function encodeHlsVariableTemplate(value: string): string {
+  return encodeURIComponent(value).replace(
+    /%7B%24([A-Za-z0-9_-]+)%7D/gi,
+    (_match, name: string) => `{$${name}}`
+  );
+}
+
 function expandKnownHlsVariables(
   value: string,
   definitions: ReadonlyMap<string, string>
@@ -199,7 +206,9 @@ function toProxiedPlaylistReference(
 ): string {
   const expandedReference = expandKnownHlsVariables(reference, definitions);
   if (/^\{\$[A-Za-z0-9_-]+\}/.test(expandedReference)) {
-    return reference;
+    return `/proxy?base=${encodeURIComponent(
+      baseUrl
+    )}&reference=${encodeHlsVariableTemplate(expandedReference)}`;
   }
 
   const unresolvedVariables: Array<{
@@ -423,7 +432,8 @@ function normalizeMediaContentType(
   if (
     baseType &&
     baseType !== 'application/octet-stream' &&
-    baseType !== 'binary/octet-stream'
+    baseType !== 'binary/octet-stream' &&
+    baseType !== 'text/plain'
   ) {
     return upstreamType;
   }
@@ -669,7 +679,7 @@ export class AudioProxyServer {
           },
           timeout: this.config.timeout,
           maxRedirects: this.config.maxRedirects,
-          validateStatus: (status: number) => status < 400,
+          validateStatus: (status: number) => status >= 200 && status < 300,
           decompress: false,
           ...this.getSecureNetworkOptions(),
         });
@@ -743,7 +753,7 @@ export class AudioProxyServer {
           responseType: 'stream',
           timeout: this.config.timeout,
           maxRedirects: this.config.maxRedirects,
-          validateStatus: (status: number) => status < 400, // Accept redirects and success codes
+          validateStatus: (status: number) => status >= 200 && status < 300,
           signal: requestAbortController.signal,
           decompress: false,
           ...this.getSecureNetworkOptions(),
@@ -903,7 +913,39 @@ export class AudioProxyServer {
   }
 
   private getRequestUrl(req: Request): RequestUrlValidationResult {
-    if (typeof req.query.url !== 'string') {
+    const rawUrl = req.query.url;
+    const rawBase = req.query.base;
+    const rawReference = req.query.reference;
+    let normalizedUrl: string;
+
+    if (typeof rawUrl === 'string') {
+      normalizedUrl = rawUrl.trim();
+    } else if (
+      typeof rawBase === 'string' &&
+      typeof rawReference === 'string'
+    ) {
+      const normalizedBase = rawBase.trim();
+      const normalizedReference = rawReference.trim();
+      if (normalizedBase.length === 0 || normalizedReference.length === 0) {
+        return {
+          valid: false,
+          status: 400,
+          error: 'Invalid URL parameter',
+          message: 'Both base and reference must be non-empty URLs',
+        };
+      }
+
+      try {
+        normalizedUrl = new URL(normalizedReference, normalizedBase).toString();
+      } catch {
+        return {
+          valid: false,
+          status: 400,
+          error: 'Invalid URL parameter',
+          message: 'Provide an absolute URL or a valid base/reference pair',
+        };
+      }
+    } else {
       return {
         valid: false,
         status: 400,
@@ -911,7 +953,6 @@ export class AudioProxyServer {
       };
     }
 
-    const normalizedUrl = req.query.url.trim();
     if (normalizedUrl.length === 0) {
       return {
         valid: false,
@@ -1212,6 +1253,21 @@ export class AudioProxyServer {
       : undefined;
 
     if (axiosError?.response) {
+      if (
+        axiosError.response.status >= 300 &&
+        axiosError.response.status < 400
+      ) {
+        return {
+          status: 502,
+          body: {
+            error: 'Upstream redirect was not followed',
+            message:
+              'Increase maxRedirects or provide the final media URL directly',
+            url,
+          },
+        };
+      }
+
       return {
         status: axiosError.response.status,
         body: {

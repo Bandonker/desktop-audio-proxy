@@ -269,6 +269,10 @@ describe('proxy network policy', () => {
     expect(rewritten).not.toContain(
       encodeURIComponent('https://manifest.example/live/{$cdn}/segments/one.ts')
     );
-    expect(rewritten).toContain('\n{$parentCdn}/segments/two.ts');
+    expect(rewritten).toContain(
+      `\n/proxy?base=${encodeURIComponent(
+        'https://manifest.example/live/index.m3u8'
+      )}&reference={$parentCdn}${encodeURIComponent('/segments/two.ts')}`
+    );
   });
 });

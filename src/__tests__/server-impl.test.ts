@@ -681,30 +681,147 @@ describe('AudioProxyServer', () => {
       }
     });
 
-    it('should normalize a generic HLS playlist type before returning it', async () => {
-      const playlist = '#EXTM3U\n#EXTINF:10,\nsegment.ts\n';
+    it('should preserve the upstream base for imported HLS variables', async () => {
+      const segmentPayload = Buffer.from('imported-variable-segment');
       const { server: upstreamServer, baseUrl } =
-        await startLocalUpstreamServer((_req, res) => {
-          res.writeHead(200, {
-            'Content-Type': 'application/octet-stream',
-            'Content-Length': String(Buffer.byteLength(playlist)),
-          });
-          res.end(playlist);
+        await startLocalUpstreamServer((req, res) => {
+          if (req.url === '/hls/child.m3u8') {
+            const playlist = [
+              '#EXTM3U',
+              '#EXT-X-DEFINE:IMPORT="path"',
+              '#EXTINF:5,',
+              '{$path}/segment.ts',
+              '',
+            ].join('\n');
+            res.writeHead(200, {
+              'Content-Type': 'application/vnd.apple.mpegurl',
+              'Content-Length': String(Buffer.byteLength(playlist)),
+            });
+            res.end(playlist);
+            return;
+          }
+          if (req.url === '/hls/media/segment.ts') {
+            res.writeHead(200, {
+              'Content-Type': 'video/mp2t',
+              'Content-Length': String(segmentPayload.length),
+            });
+            res.end(segmentPayload);
+            return;
+          }
+          res.writeHead(404);
+          res.end();
         });
 
       try {
-        const response = await axios.get(`${server.getProxyUrl()}/proxy`, {
-          params: { url: `${baseUrl}/station.m3u8` },
-        });
-
-        expect(response.headers['content-type']).toContain(
-          'application/vnd.apple.mpegurl'
+        const manifestResponse = await axios.get(
+          `${server.getProxyUrl()}/proxy`,
+          {
+            params: { url: `${baseUrl}/hls/child.m3u8` },
+          }
         );
-        expect(String(response.data)).toContain('/proxy?url=');
+        const rewrittenSegmentPath = String(manifestResponse.data)
+          .split('\n')
+          .find(line => line.startsWith('/proxy?base='));
+
+        expect(rewrittenSegmentPath).toBe(
+          `/proxy?base=${encodeURIComponent(
+            `${baseUrl}/hls/child.m3u8`
+          )}&reference={$path}${encodeURIComponent('/segment.ts')}`
+        );
+
+        const substitutedSegmentPath = rewrittenSegmentPath?.replace(
+          '{$path}',
+          'media'
+        );
+        const segmentResponse = await axios.get(
+          `${server.getProxyUrl()}${substitutedSegmentPath}`,
+          { responseType: 'arraybuffer' }
+        );
+
+        expect(Buffer.from(segmentResponse.data)).toEqual(segmentPayload);
       } finally {
         await stopLocalUpstreamServer(upstreamServer);
       }
     });
+
+    it('should reject upstream redirects when redirect following is disabled', async () => {
+      await server.stop();
+      server = new AudioProxyServer({
+        port: testPort,
+        enableLogging: false,
+        allowPrivateAddresses: true,
+        maxRedirects: 0,
+      });
+      await server.start();
+
+      let redirectedTargetRequests = 0;
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((req, res) => {
+          if (req.url === '/redirect') {
+            res.writeHead(302, { Location: '/audio' });
+            res.end();
+            return;
+          }
+          if (req.url === '/audio') {
+            redirectedTargetRequests += 1;
+            res.writeHead(200, { 'Content-Type': 'audio/mpeg' });
+            res.end('audio');
+            return;
+          }
+          res.writeHead(404);
+          res.end();
+        });
+
+      try {
+        for (const endpoint of ['info', 'proxy']) {
+          const response = await axios.get(
+            `${server.getProxyUrl()}/${endpoint}`,
+            {
+              params: { url: `${baseUrl}/redirect` },
+              maxRedirects: 0,
+              validateStatus: () => true,
+            }
+          );
+
+          expect(response.status).toBe(502);
+          expect(response.headers.location).toBeUndefined();
+          expect(response.data.error).toBe(
+            'Upstream redirect was not followed'
+          );
+        }
+        expect(redirectedTargetRequests).toBe(0);
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
+      }
+    });
+
+    it.each(['application/octet-stream', 'text/plain; charset=utf-8'])(
+      'should normalize a generic HLS playlist type before returning it: %s',
+      async upstreamContentType => {
+        const playlist = '#EXTM3U\n#EXTINF:10,\nsegment.ts\n';
+        const { server: upstreamServer, baseUrl } =
+          await startLocalUpstreamServer((_req, res) => {
+            res.writeHead(200, {
+              'Content-Type': upstreamContentType,
+              'Content-Length': String(Buffer.byteLength(playlist)),
+            });
+            res.end(playlist);
+          });
+
+        try {
+          const response = await axios.get(`${server.getProxyUrl()}/proxy`, {
+            params: { url: `${baseUrl}/station.m3u8` },
+          });
+
+          expect(response.headers['content-type']).toContain(
+            'application/vnd.apple.mpegurl'
+          );
+          expect(String(response.data)).toContain('/proxy?url=');
+        } finally {
+          await stopLocalUpstreamServer(upstreamServer);
+        }
+      }
+    );
 
     it('should pass partial HLS responses through without corrupting them', async () => {
       const partialPlaylist = Buffer.from('#EXTM3U\n#EX');

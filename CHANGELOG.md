@@ -5,7 +5,10 @@
 ### Fixed
 
 - Expanded known HLS `{$variable}` definitions before URL resolution and
-  preserved unresolved references while rewriting variants, segments, and keys.
+  preserved unresolved imports and their upstream base while rewriting
+  variants, segments, and keys.
+- Rejected unfollowed upstream redirects instead of reporting them as playable
+  metadata or returning a redirect without a usable destination.
 - Extended media-controller cancellation across pending proxy resolution and
   `element.play()` calls so stopped, disposed, or superseded work resolves to
   `null`.
@@ -14,6 +17,10 @@
   diagnostics for slow GitHub-hosted Windows runners.
 - Kept Electron/Tauri CI on Windows while moving the independent Playwright
   WebKit smoke to Ubuntu with its required system dependencies.
+- Corrected recognized media extensions, including HLS playlists, when an
+  upstream responds with a generic `text/plain` content type.
+- Raised the declared Node.js minimum to 14.18, where `node:net` `BlockList`
+  became available for the server's destination policy.
 
 ## [1.1.8] - 2026-07-27
 

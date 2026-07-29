@@ -18,6 +18,8 @@ available.
 ## How To Run
 
 - Install dependencies: `npm ci`
+- The declared runtime floor is Node 14.18 because server destination policy
+  uses `node:net` `BlockList`; Node 18+ is recommended for built-in `fetch`.
 - CI/development verification targets Node 20, 22, and 24; Node 24 is the
   release-quality gate.
 - Build all package entry points: `npm run build`

@@ -151,10 +151,11 @@ pnpm add desktop-audio-proxy
 
 ### Runtime Requirements
 
-- Node.js `>=14` is declared in `engines`; automated CI currently verifies Node
-  20, 22, and 24
+- Node.js `>=14.18` is declared in `engines` because the server's network
+  policy uses `node:net` `BlockList`; automated CI currently verifies Node 20,
+  22, and 24
 - Node.js `>=18` is recommended for built-in `fetch` support
-- If you run in Node.js 14/16, provide a global `fetch` polyfill for client health/info checks
+- If you run in Node.js 14.18+/16, provide a global `fetch` polyfill for client health/info checks
 - React/Vue entry points require their respective framework in your app (`react` or `vue`)
 
 ## Package Exports
@@ -456,7 +457,7 @@ dialects have not been exhaustively validated.
  - Byte-transparent media delivery; actual codec support depends on the WebView,
    Electron, browser, and operating-system decoder
  - Content-Type preservation plus known-extension correction when an upstream
-   returns a generic binary type
+   returns a generic binary or plain-text type
  - Upstream status and response-header inspection via `/info`
 
 **React Video Example:**

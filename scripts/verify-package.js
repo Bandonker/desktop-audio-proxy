@@ -2,6 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+if (packageJson.engines?.node !== '>=14.18.0') {
+  throw new Error(
+    'Published package must require Node >=14.18.0 for node:net BlockList'
+  );
+}
 const npmExecutable = process.env.npm_execpath;
 const command = npmExecutable
   ? process.execPath
