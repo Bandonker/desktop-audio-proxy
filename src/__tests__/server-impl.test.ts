@@ -1007,6 +1007,41 @@ describe('AudioProxyServer', () => {
       }
     });
 
+    it('should reject cyclic HLS variable expansion with a bounded error', async () => {
+      const playlist = [
+        '#EXTM3U',
+        '#EXT-X-DEFINE:NAME="x",VALUE="{$x}{$x}"',
+        '#EXTINF:5,',
+        '{$x}',
+        '',
+      ].join('\n');
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((_req, res) => {
+          res.writeHead(200, {
+            'Content-Type': 'application/vnd.apple.mpegurl',
+            'Content-Length': String(Buffer.byteLength(playlist)),
+          });
+          res.end(playlist);
+        });
+
+      try {
+        await expect(
+          axios.get(`${server.getProxyUrl()}/proxy`, {
+            params: { url: `${baseUrl}/cyclic.m3u8` },
+          })
+        ).rejects.toMatchObject({
+          response: {
+            status: 422,
+            data: {
+              error: 'HLS variable expansion rejected',
+            },
+          },
+        });
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
+      }
+    });
+
     it('should handle range requests for seeking', async () => {
       const fullPayload = Buffer.alloc(1024, 1);
       const { server: upstreamServer, baseUrl } =

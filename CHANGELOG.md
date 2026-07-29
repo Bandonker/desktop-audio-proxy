@@ -7,6 +7,8 @@
 - Expanded known HLS `{$variable}` definitions before URL resolution and
   carried bounded parent definitions into child playlists so imported values
   retain their upstream base and URI delimiters.
+- Rejected cyclic, over-deep, oversized, or excessive HLS variable definitions
+  before they can consume unbounded proxy memory.
 - Rejected unfollowed upstream redirects instead of reporting them as playable
   metadata or returning a redirect without a usable destination.
 - Rewrote HLS playlists that explicitly declare identity content encoding.

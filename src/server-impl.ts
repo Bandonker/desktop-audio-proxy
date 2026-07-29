@@ -23,6 +23,7 @@ const DEFAULT_ACCEPT_LANGUAGE_HEADER = 'en-US,en;q=0.9';
 const MAX_HLS_PLAYLIST_BYTES = 2 * 1024 * 1024;
 const MAX_HLS_VARIABLE_CONTEXT_BYTES = 16 * 1024;
 const MAX_HLS_VARIABLE_COUNT = 128;
+const MAX_HLS_VARIABLE_EXPANSION_CHARS = 16 * 1024;
 
 const CORS_EXPOSED_HEADERS = [
   'Content-Length',
@@ -184,29 +185,106 @@ function encodeHlsVariableTemplate(value: string): string {
   );
 }
 
+function createHlsVariableExpansionError(
+  reason: string
+): NodeJS.ErrnoException {
+  const error = new Error(
+    `HLS variable expansion exceeded safe limits: ${reason}`
+  ) as NodeJS.ErrnoException;
+  error.code = 'EHLSVARIABLEEXPANSION';
+  return error;
+}
+
+function replaceKnownHlsVariablesBounded(
+  value: string,
+  definitions: ReadonlyMap<string, string>
+): { value: string; replaced: boolean } {
+  const referenceRegex = new RegExp(HLS_VARIABLE_REFERENCE_REGEX.source, 'g');
+  const chunks: string[] = [];
+  let cursor = 0;
+  let outputLength = 0;
+  let replaced = false;
+  let match: RegExpExecArray | null;
+
+  while ((match = referenceRegex.exec(value)) !== null) {
+    const replacement = definitions.get(match[1]);
+    if (replacement === undefined) {
+      continue;
+    }
+
+    replaced = true;
+    const prefixLength = match.index - cursor;
+    if (
+      outputLength + prefixLength + replacement.length >
+      MAX_HLS_VARIABLE_EXPANSION_CHARS
+    ) {
+      throw createHlsVariableExpansionError('expanded value is too large');
+    }
+    chunks.push(value.slice(cursor, match.index), replacement);
+    outputLength += prefixLength + replacement.length;
+    cursor = match.index + match[0].length;
+  }
+
+  if (!replaced) {
+    return { value, replaced: false };
+  }
+
+  const suffixLength = value.length - cursor;
+  if (outputLength + suffixLength > MAX_HLS_VARIABLE_EXPANSION_CHARS) {
+    throw createHlsVariableExpansionError('expanded value is too large');
+  }
+  chunks.push(value.slice(cursor));
+  return { value: chunks.join(''), replaced: true };
+}
+
 function expandKnownHlsVariables(
   value: string,
   definitions: ReadonlyMap<string, string>
 ): string {
   let expanded = value;
+  const seenValues = new Set<string>([expanded]);
   for (let pass = 0; pass <= definitions.size; pass += 1) {
-    const next = expanded.replace(
-      HLS_VARIABLE_REFERENCE_REGEX,
-      (reference, name: string) => definitions.get(name) ?? reference
-    );
-    if (next === expanded) {
-      break;
+    const result = replaceKnownHlsVariablesBounded(expanded, definitions);
+    if (!result.replaced) {
+      return expanded;
     }
-    expanded = next;
+    if (result.value === expanded || seenValues.has(result.value)) {
+      throw createHlsVariableExpansionError(
+        'cyclic variable definitions are not supported'
+      );
+    }
+    seenValues.add(result.value);
+    expanded = result.value;
   }
-  return expanded;
+
+  throw createHlsVariableExpansionError(
+    'variable resolution depth was exceeded'
+  );
+}
+
+function setHlsVariableDefinition(
+  definitions: Map<string, string>,
+  name: string,
+  value: string
+): void {
+  if (!definitions.has(name) && definitions.size >= MAX_HLS_VARIABLE_COUNT) {
+    throw createHlsVariableExpansionError(
+      `more than ${MAX_HLS_VARIABLE_COUNT} definitions were provided`
+    );
+  }
+  definitions.set(name, value);
 }
 
 function encodeHlsVariableContext(
   definitions: ReadonlyMap<string, string>
 ): string | undefined {
-  if (definitions.size === 0 || definitions.size > MAX_HLS_VARIABLE_COUNT) {
+  if (definitions.size === 0) {
     return undefined;
+  }
+  if (definitions.size > MAX_HLS_VARIABLE_COUNT) {
+    throw createHlsVariableExpansionError(
+      `more than ${MAX_HLS_VARIABLE_COUNT} definitions were provided`
+    );
   }
 
   const entries = Array.from(definitions, ([name, value]) => [
@@ -215,7 +293,9 @@ function encodeHlsVariableContext(
   ]);
   const serialized = JSON.stringify(entries);
   if (Buffer.byteLength(serialized, 'utf8') > MAX_HLS_VARIABLE_CONTEXT_BYTES) {
-    return undefined;
+    throw createHlsVariableExpansionError(
+      'serialized variable context is too large'
+    );
   }
 
   return Buffer.from(serialized, 'utf8').toString('base64');
@@ -363,7 +443,7 @@ function collectHlsVariableDefinitions(
     const name = getHlsQuotedAttribute(attributeList, 'NAME');
     const value = getHlsQuotedAttribute(attributeList, 'VALUE');
     if (name && HLS_VARIABLE_NAME_REGEX.test(name) && value !== undefined) {
-      definitions.set(name, value);
+      setHlsVariableDefinition(definitions, name, value);
       continue;
     }
     const queryParameter = getHlsQuotedAttribute(attributeList, 'QUERYPARAM');
@@ -372,7 +452,11 @@ function collectHlsVariableDefinitions(
       HLS_VARIABLE_NAME_REGEX.test(queryParameter) &&
       baseQuery?.has(queryParameter)
     ) {
-      definitions.set(queryParameter, baseQuery.get(queryParameter) ?? '');
+      setHlsVariableDefinition(
+        definitions,
+        queryParameter,
+        baseQuery.get(queryParameter) ?? ''
+      );
       continue;
     }
     const importedName = getHlsQuotedAttribute(attributeList, 'IMPORT');
@@ -381,7 +465,8 @@ function collectHlsVariableDefinitions(
       HLS_VARIABLE_NAME_REGEX.test(importedName) &&
       inheritedDefinitions.has(importedName)
     ) {
-      definitions.set(
+      setHlsVariableDefinition(
+        definitions,
         importedName,
         inheritedDefinitions.get(importedName) ?? ''
       );
@@ -1486,6 +1571,17 @@ export class AudioProxyServer {
         body: {
           error: 'HLS playlist is too large',
           message: `Playlist metadata is limited to ${MAX_HLS_PLAYLIST_BYTES} bytes`,
+          url,
+        },
+      };
+    }
+
+    if (errorCode === 'EHLSVARIABLEEXPANSION') {
+      return {
+        status: 422,
+        body: {
+          error: 'HLS variable expansion rejected',
+          message: `Variable expansion is limited to ${MAX_HLS_VARIABLE_EXPANSION_CHARS} characters and ${MAX_HLS_VARIABLE_COUNT} definitions`,
           url,
         },
       };

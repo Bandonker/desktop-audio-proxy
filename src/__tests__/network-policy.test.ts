@@ -275,4 +275,21 @@ describe('proxy network policy', () => {
       )}&reference={$parentCdn}${encodeURIComponent('/segments/two.ts')}`
     );
   });
+
+  it('rejects cyclic HLS variables before their expansion can grow', () => {
+    const playlist = [
+      '#EXTM3U',
+      '#EXT-X-DEFINE:NAME="x",VALUE="{$x}{$x}"',
+      ...Array.from(
+        { length: 127 },
+        (_value, index) => `#EXT-X-DEFINE:NAME="padding${index}",VALUE="safe"`
+      ),
+      '#EXTINF:5,',
+      '{$x}',
+    ].join('\n');
+
+    expect(() =>
+      rewriteHlsPlaylist(playlist, 'https://manifest.example/live/index.m3u8')
+    ).toThrow('HLS variable expansion exceeded safe limits');
+  });
 });
