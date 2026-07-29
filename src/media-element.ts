@@ -36,18 +36,41 @@ export function createMediaElementController(
   });
   let requestGeneration = 0;
   let disposed = false;
-  const load = async (url: string): Promise<string | null> => {
+  const prepare = async (
+    url: string
+  ): Promise<{ playableUrl: string; generation: number } | null> => {
     if (disposed) {
       throw new Error('Media element controller has been disposed');
     }
-    const currentGeneration = ++requestGeneration;
+    const generation = ++requestGeneration;
     const playableUrl = await client.getPlayableUrl(url);
-    if (currentGeneration !== requestGeneration) {
+    if (generation !== requestGeneration) {
       return null;
     }
     element.src = playableUrl;
     element.load();
-    return playableUrl;
+    return { playableUrl, generation };
+  };
+  const load = async (url: string): Promise<string | null> => {
+    const prepared = await prepare(url);
+    return prepared?.playableUrl ?? null;
+  };
+  const play = async (url: string): Promise<string | null> => {
+    const prepared = await prepare(url);
+    if (!prepared) {
+      return null;
+    }
+    try {
+      await element.play();
+    } catch (error) {
+      if (prepared.generation !== requestGeneration) {
+        return null;
+      }
+      throw error;
+    }
+    return prepared.generation === requestGeneration
+      ? prepared.playableUrl
+      : null;
   };
   const stop = (): void => {
     requestGeneration += 1;
@@ -63,23 +86,11 @@ export function createMediaElementController(
     ): Promise<string | null> {
       return load(selectPlayableMediaSource(element, candidates).url);
     },
-    async play(url: string): Promise<string | null> {
-      const playableUrl = await load(url);
-      if (playableUrl) {
-        await element.play();
-      }
-      return playableUrl;
-    },
+    play,
     async playBest(
       candidates: readonly MediaSourceCandidate[]
     ): Promise<string | null> {
-      const playableUrl = await load(
-        selectPlayableMediaSource(element, candidates).url
-      );
-      if (playableUrl) {
-        await element.play();
-      }
-      return playableUrl;
+      return play(selectPlayableMediaSource(element, candidates).url);
     },
     stop,
     async dispose(): Promise<void> {

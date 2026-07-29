@@ -148,11 +148,22 @@ try {
     output += chunk;
     process.stderr.write(chunk);
   });
+  const timeoutMs = host === 'tauri' ? 90_000 : 45_000;
+  console.log(
+    `${host} native smoke launched with a ${timeoutMs / 1_000}-second timeout`
+  );
   const exitCode = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       child.kill();
-      reject(new Error(`${host} native smoke timed out after 45 seconds`));
-    }, 45_000);
+      const diagnosticOutput =
+        output.trim().slice(-2_000) || '<no child output captured>';
+      reject(
+        new Error(
+          `${host} native smoke timed out after ${timeoutMs / 1_000} seconds; ` +
+            `child output: ${diagnosticOutput}`
+        )
+      );
+    }, timeoutMs);
     child.once('error', error => {
       clearTimeout(timeout);
       reject(error);

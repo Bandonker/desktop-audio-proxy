@@ -213,4 +213,37 @@ describe('proxy network policy', () => {
       )}`
     );
   });
+
+  it('preserves HLS variable references in rewritten playlist URIs', () => {
+    const playlist = [
+      '#EXTM3U',
+      '#EXT-X-DEFINE:NAME="auth",VALUE="signed-query"',
+      '#EXT-X-DEFINE:IMPORT="rendition"',
+      '#EXT-X-KEY:METHOD=AES-128,URI="../keys/key.bin?token={$auth}"',
+      '#EXT-X-STREAM-INF:BANDWIDTH=1280000',
+      'variants/{$rendition}.m3u8?token={$auth}',
+      'segments/one.ts?token={$auth}',
+    ].join('\n');
+
+    const rewritten = rewriteHlsPlaylist(
+      playlist,
+      'https://media.example/live/master/index.m3u8'
+    );
+
+    expect(rewritten).toContain(
+      `URI="/proxy?url=${encodeURIComponent(
+        'https://media.example/live/keys/key.bin?token='
+      )}{$auth}"`
+    );
+    expect(rewritten).toContain(
+      `/proxy?url=${encodeURIComponent(
+        'https://media.example/live/master/variants/'
+      )}{$rendition}${encodeURIComponent('.m3u8?token=')}{$auth}`
+    );
+    expect(rewritten).toContain(
+      `/proxy?url=${encodeURIComponent(
+        'https://media.example/live/master/segments/one.ts?token='
+      )}{$auth}`
+    );
+  });
 });

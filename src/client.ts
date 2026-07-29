@@ -580,7 +580,8 @@ export class AudioProxyClient {
           convertFileSrc &&
           (url.startsWith('file://') ||
             url.startsWith('/') ||
-            WINDOWS_PATH_REGEX.test(url))
+            WINDOWS_PATH_REGEX.test(url) ||
+            WINDOWS_UNC_PATH_REGEX.test(url))
         ) {
           return convertFileSrc(url);
         }

@@ -176,12 +176,36 @@ function toProxiedPlaylistReference(
   reference: string,
   baseUrl: string
 ): string {
+  const variables: Array<{ placeholder: string; reference: string }> = [];
+  let placeholderIndex = 0;
+  const protectedReference = reference.replace(
+    /\{\$[A-Za-z0-9_-]+\}/g,
+    variableReference => {
+      let placeholder: string;
+      do {
+        placeholder = `daphlsvariable${placeholderIndex}marker`;
+        placeholderIndex += 1;
+      } while (
+        reference.includes(placeholder) ||
+        baseUrl.includes(placeholder)
+      );
+      variables.push({ placeholder, reference: variableReference });
+      return placeholder;
+    }
+  );
+
   try {
-    const resolved = new URL(reference, baseUrl);
+    const resolved = new URL(protectedReference, baseUrl);
     if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
       return reference;
     }
-    return `/proxy?url=${encodeURIComponent(resolved.toString())}`;
+    let encodedUrl = encodeURIComponent(resolved.toString());
+    for (const variable of variables) {
+      encodedUrl = encodedUrl
+        .split(encodeURIComponent(variable.placeholder))
+        .join(variable.reference);
+    }
+    return `/proxy?url=${encodedUrl}`;
   } catch {
     return reference;
   }

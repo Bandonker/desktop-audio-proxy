@@ -202,6 +202,24 @@ describe('AudioProxyClient', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
+    it('should convert Windows UNC paths through the Tauri asset protocol', async () => {
+      const convertFileSrc = jest.fn(
+        (filePath: string) =>
+          `asset://localhost/${encodeURIComponent(filePath)}`
+      );
+      (global as GlobalMock).window = {
+        __TAURI__: { tauri: { convertFileSrc } },
+      };
+      const tauriClient = new AudioProxyClient();
+      const fileUrl = '\\\\media-server\\radio\\sample.mp3';
+
+      const result = await tauriClient.getPlayableUrl(fileUrl);
+
+      expect(convertFileSrc).toHaveBeenCalledWith(fileUrl);
+      expect(result).toBe(`asset://localhost/${encodeURIComponent(fileUrl)}`);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('should handle data: URLs by falling back to original', async () => {
       // Mock health check failure for data URLs (they don't need proxy anyway)
       mockFetch.mockRejectedValueOnce(new Error('Network error'));

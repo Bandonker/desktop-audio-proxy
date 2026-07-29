@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Preserved HLS `{$variable}` references while rewriting playlist variants,
+  segments, and key URIs through the proxy.
+- Extended media-controller cancellation across pending `element.play()` calls
+  so stopped, disposed, or superseded playback resolves to `null`.
+- Converted recognized Windows UNC media paths through Tauri's asset protocol.
+- Increased the Tauri smoke fixture's startup allowance and added child-process
+  diagnostics for slow GitHub-hosted Windows runners.
+
 ## [1.1.8] - 2026-07-27
 
 ### Added

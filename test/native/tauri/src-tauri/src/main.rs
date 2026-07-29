@@ -18,6 +18,8 @@ fn report_smoke(app: tauri::AppHandle, result: String) {
 }
 
 fn main() {
+    println!("DAP_NATIVE_SMOKE_START:tauri");
+    let _ = io::stdout().flush();
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![smoke_config, report_smoke])
         .run(tauri::generate_context!())

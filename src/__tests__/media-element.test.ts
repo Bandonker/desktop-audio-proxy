@@ -138,6 +138,76 @@ describe('media element controller', () => {
     expect(media.play).toHaveBeenCalledTimes(1);
   });
 
+  it('returns null when stopped while element playback is pending', async () => {
+    const media = createTestMediaElement();
+    let signalPlayStarted: (() => void) | undefined;
+    let resolvePlay: (() => void) | undefined;
+    const playStarted = new Promise<void>(resolve => {
+      signalPlayStarted = resolve;
+    });
+    (media.play as jest.Mock).mockImplementation(
+      () =>
+        new Promise<void>(resolve => {
+          resolvePlay = resolve;
+          signalPlayStarted?.();
+        })
+    );
+    const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ status: 'ok' }),
+    } as Response);
+    const controller = createMediaElementController(media, {
+      proxyUrl: 'http://localhost:3001',
+      autoDetect: false,
+      fallbackToOriginal: false,
+    });
+
+    const pendingPlay = controller.play('https://radio.example/live.aac');
+    await playStarted;
+    controller.stop();
+    resolvePlay?.();
+
+    await expect(pendingPlay).resolves.toBeNull();
+  });
+
+  it('suppresses a playback abort after disposal cancels the operation', async () => {
+    const media = createTestMediaElement();
+    let signalPlayStarted: (() => void) | undefined;
+    let rejectPlay: ((error: Error) => void) | undefined;
+    const playStarted = new Promise<void>(resolve => {
+      signalPlayStarted = resolve;
+    });
+    (media.play as jest.Mock).mockImplementation(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectPlay = reject;
+          signalPlayStarted?.();
+        })
+    );
+    const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ status: 'ok' }),
+    } as Response);
+    const controller = createMediaElementController(media, {
+      proxyUrl: 'http://localhost:3001',
+      autoDetect: false,
+      fallbackToOriginal: false,
+    });
+
+    const pendingPlay = controller.play('https://radio.example/live.aac');
+    await playStarted;
+    await controller.dispose();
+    const abortError = new Error('The play request was interrupted');
+    abortError.name = 'AbortError';
+    rejectPlay?.(abortError);
+
+    await expect(pendingPlay).resolves.toBeNull();
+  });
+
   it('stops playback and clears the media source', () => {
     const media = createTestMediaElement();
     const controller = createMediaElementController(media, {
