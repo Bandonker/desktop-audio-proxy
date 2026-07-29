@@ -46,6 +46,9 @@ OIDC and must not receive an `NPM_TOKEN` write secret.
   `npm run verify:types`, and `npm run verify:package`; `npm run build` must
   remain a clean build.
 - Demo changes require `npm run test:demo-smoke`; significant UI changes also require a browser check.
+- The release workflow runs Electron and Tauri on Windows, and the independent
+  Playwright WebKit engine smoke on Ubuntu with Playwright's system
+  dependencies. Neither substitutes for native Apple WKWebView certification.
 - README/example changes require `npm run verify:examples`, `npm run
 verify:docs`, and a demo smoke test; referenced screenshots must come from a
   browser-verified local build.
