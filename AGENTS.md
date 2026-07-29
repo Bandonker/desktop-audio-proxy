@@ -6,11 +6,13 @@ Current milestone: release-candidate verification for the 1.1.8 TypeScript
 client/server package and its drop-in, WebKit-aware media-element integration.
 
 Known blockers: macOS/iOS WKWebView has not been run; the independent WebKit
-engine smoke is not native Apple platform certification. npm publication still
-requires the repository `NPM_TOKEN` secret or a future trusted-publishing setup.
+engine smoke is not native Apple platform certification. npm publication
+requires the package's npm settings to trust GitHub user `Bandonker`, repository
+`desktop-audio-proxy`, and workflow filename `publish.yml`.
 
 Next highest-leverage step: run the release workflow after reviewing the local
-release commit and configuring the npm publishing credential.
+release commit and configuring the npm Trusted Publisher. The workflow uses
+OIDC and must not receive an `NPM_TOKEN` write secret.
 
 ## How To Run
 

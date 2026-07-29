@@ -1286,10 +1286,12 @@ npm pack --dry-run
 The native commands are Windows release gates here. A macOS WKWebView run is a
 separate platform-certification gate, not implied by the WebKit engine smoke.
 
-The current publish workflow reads the npm credential from GitHub repository
-**Settings → Secrets and variables → Actions → Repository secrets**. Add a
-repository secret named exactly `NPM_TOKEN`; never put the token in this repo,
-an `.npmrc`, an example, or a chat message.
+The publish workflow uses npm Trusted Publishing (OIDC), so it does not need an
+`NPM_TOKEN` secret or a write token in this repository. In the npm package
+settings, configure the GitHub Actions trusted publisher for user `Bandonker`,
+repository `desktop-audio-proxy`, and workflow filename `publish.yml`. Leave the
+environment blank unless the workflow is later assigned a matching GitHub
+environment.
 
 ### Contributing
 
