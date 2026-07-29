@@ -23,6 +23,8 @@
   GitHub-hosted Windows runners.
 - Kept Electron/Tauri CI on Windows while moving the independent Playwright
   WebKit smoke to Ubuntu with its required system dependencies.
+- Pinned the Electron native-smoke fixture to the last Node 20-compatible
+  installer and made matrix dependency installs enforce package engines.
 - Corrected recognized media extensions, including HLS playlists, when an
   upstream responds with a generic `text/plain` content type.
 - Raised the declared Node.js minimum to 14.18, where `node:net` `BlockList`

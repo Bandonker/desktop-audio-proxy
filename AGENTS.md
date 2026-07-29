@@ -22,6 +22,9 @@ available.
   uses `node:net` `BlockList`; Node 18+ is recommended for built-in `fetch`.
 - CI/development verification targets Node 20, 22, and 24; Node 24 is the
   release-quality gate.
+- Keep the Electron native-smoke dependency exactly pinned to `41.7.1` while
+  Node 20 remains in the CI matrix; Electron `41.7.2` and newer installers
+  require Node 22.12. CI uses `npm ci --engine-strict` to enforce this boundary.
 - Build all package entry points: `npm run build`
 - Start the standalone proxy example: `npm run proxy:start`
 - Start the browser demo: `npm run demo`
