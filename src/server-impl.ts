@@ -1,11 +1,12 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 import { lookup as systemLookup, LookupAddress } from 'dns';
 import { BlockList, isIP, LookupFunction } from 'net';
 import { Agent as HttpAgent, Server as HttpServer } from 'http';
 import { Agent as HttpsAgent } from 'https';
+import { createBrotliDecompress, createGunzip, createInflate } from 'zlib';
 import { ProxyConfig } from './types';
 
 const DEFAULT_PORT = 3002;
@@ -631,9 +632,97 @@ function getHeaderString(value: unknown): string | undefined {
   return undefined;
 }
 
-function isIdentityContentEncoding(value: unknown): boolean {
-  const contentEncoding = getHeaderString(value)?.trim().toLowerCase();
-  return !contentEncoding || contentEncoding === 'identity';
+type HlsContentDecoder = Transform;
+
+interface DecodedHlsPlaylistStream {
+  stream: Readable;
+  destroy: () => void;
+}
+
+function createUnsupportedHlsContentEncodingError(): NodeJS.ErrnoException {
+  const error = new Error(
+    'The upstream HLS playlist uses an unsupported content encoding'
+  ) as NodeJS.ErrnoException;
+  error.code = 'EUNSUPPORTEDHLSENCODING';
+  return error;
+}
+
+function createDecodedHlsPlaylistStream(
+  source: Readable,
+  contentEncoding: unknown
+): DecodedHlsPlaylistStream | null {
+  const normalizedEncodings = getHeaderString(contentEncoding)
+    ?.split(',')
+    .map(encoding => encoding.trim().toLowerCase())
+    .filter(encoding => encoding && encoding !== 'identity');
+  if (!normalizedEncodings?.length) {
+    return {
+      stream: source,
+      destroy: () => {
+        if (!source.destroyed) {
+          source.destroy();
+        }
+      },
+    };
+  }
+  if (
+    normalizedEncodings.some(
+      encoding =>
+        encoding !== 'gzip' &&
+        encoding !== 'x-gzip' &&
+        encoding !== 'deflate' &&
+        encoding !== 'br'
+    )
+  ) {
+    return null;
+  }
+
+  const decoders: HlsContentDecoder[] = [];
+  const errorLinks: Array<{
+    input: Readable;
+    handler: (error: Error) => void;
+  }> = [];
+  let decodedStream = source;
+
+  for (const encoding of [...normalizedEncodings].reverse()) {
+    let decoder: HlsContentDecoder;
+    if (encoding === 'gzip' || encoding === 'x-gzip') {
+      decoder = createGunzip();
+    } else if (encoding === 'deflate') {
+      decoder = createInflate();
+    } else if (encoding === 'br') {
+      decoder = createBrotliDecompress();
+    } else {
+      continue;
+    }
+
+    const input = decodedStream;
+    const forwardError = (error: Error): void => {
+      decoder.destroy(error);
+    };
+    input.once('error', forwardError);
+    errorLinks.push({ input, handler: forwardError });
+    input.pipe(decoder);
+    decoders.push(decoder);
+    decodedStream = decoder;
+  }
+
+  return {
+    stream: decodedStream,
+    destroy: () => {
+      errorLinks.forEach(({ input, handler }) => {
+        input.removeListener('error', handler);
+      });
+      decoders.forEach(decoder => {
+        if (!decoder.destroyed) {
+          decoder.destroy();
+        }
+      });
+      if (!source.destroyed) {
+        source.destroy();
+      }
+    },
+  };
 }
 
 function getFinalResponseUrl(
@@ -1019,23 +1108,37 @@ export class AudioProxyServer {
 
         const stream = response.data as Readable;
 
-        if (
+        const shouldRewriteHlsPlaylist =
           isHlsPlaylist(finalUrl, normalizedContentType) &&
-          isIdentityContentEncoding(response.headers['content-encoding']) &&
           response.status === 200 &&
-          !req.headers.range
-        ) {
+          !req.headers.range;
+        const decodedHlsPlaylist = shouldRewriteHlsPlaylist
+          ? createDecodedHlsPlaylistStream(
+              stream,
+              response.headers['content-encoding']
+            )
+          : null;
+
+        if (shouldRewriteHlsPlaylist && !decodedHlsPlaylist) {
+          requestAbortController.abort();
+          if (!stream.destroyed) {
+            stream.destroy();
+          }
+          throw createUnsupportedHlsContentEncodingError();
+        }
+
+        if (decodedHlsPlaylist) {
           const abortPlaylistRead = (): void => {
             requestAbortController.abort();
-            if (!stream.destroyed) {
-              stream.destroy();
-            }
+            decodedHlsPlaylist.destroy();
           };
           req.once('aborted', abortPlaylistRead);
           res.once('close', abortPlaylistRead);
 
           try {
-            const playlistBuffer = await readPlaylist(stream);
+            const playlistBuffer = await readPlaylist(
+              decodedHlsPlaylist.stream
+            );
             if (res.destroyed || res.writableEnded) {
               return;
             }
@@ -1045,14 +1148,13 @@ export class AudioProxyServer {
               inheritedHlsDefinitions
             );
             res.removeHeader('content-length');
+            res.removeHeader('content-encoding');
             return res.send(rewrittenPlaylist);
           } finally {
             req.removeListener('aborted', abortPlaylistRead);
             res.removeListener('close', abortPlaylistRead);
             requestAbortController.abort();
-            if (!stream.destroyed) {
-              stream.destroy();
-            }
+            decodedHlsPlaylist.destroy();
           }
         }
 
@@ -1571,6 +1673,18 @@ export class AudioProxyServer {
         body: {
           error: 'HLS playlist is too large',
           message: `Playlist metadata is limited to ${MAX_HLS_PLAYLIST_BYTES} bytes`,
+          url,
+        },
+      };
+    }
+
+    if (errorCode === 'EUNSUPPORTEDHLSENCODING') {
+      return {
+        status: 502,
+        body: {
+          error: 'Unsupported HLS content encoding',
+          message:
+            'The proxy supports identity, gzip, deflate, and Brotli playlist encodings',
           url,
         },
       };

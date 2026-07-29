@@ -9,6 +9,8 @@
   retain their upstream base and URI delimiters.
 - Rejected cyclic, over-deep, oversized, or excessive HLS variable definitions
   before they can consume unbounded proxy memory.
+- Decoded gzip, deflate, and Brotli HLS playlists before rewriting their
+  upstream-relative references while preserving compressed non-HLS payloads.
 - Rejected unfollowed upstream redirects instead of reporting them as playable
   metadata or returning a redirect without a usable destination.
 - Rewrote HLS playlists that explicitly declare identity content encoding.

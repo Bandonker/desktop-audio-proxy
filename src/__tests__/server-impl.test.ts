@@ -12,7 +12,7 @@ import {
   ServerResponse,
 } from 'http';
 import { createServer as createNetServer } from 'net';
-import { gzipSync } from 'zlib';
+import { brotliCompressSync, deflateSync, gzipSync } from 'zlib';
 
 // Type for error responses in tests
 interface ErrorResponse {
@@ -593,8 +593,8 @@ describe('AudioProxyServer', () => {
       });
     });
 
-    it('should preserve compressed upstream bytes and encoding metadata', async () => {
-      const compressedPayload = gzipSync('playlist contents');
+    it('should preserve compressed non-HLS bytes and encoding metadata', async () => {
+      const compressedPayload = gzipSync('audio payload');
       const { server: upstreamServer, baseUrl } =
         await startLocalUpstreamServer((req, res) => {
           if (req.url !== '/compressed') {
@@ -604,7 +604,7 @@ describe('AudioProxyServer', () => {
           }
 
           res.writeHead(200, {
-            'Content-Type': 'application/vnd.apple.mpegurl',
+            'Content-Type': 'application/octet-stream',
             'Content-Encoding': 'gzip',
             'Content-Length': String(compressedPayload.length),
           });
@@ -626,11 +626,14 @@ describe('AudioProxyServer', () => {
     });
 
     it.each([
-      ['without content encoding', undefined],
-      ['with identity content encoding', 'identity'],
+      ['without content encoding', undefined, (value: string) => value],
+      ['with identity content encoding', 'identity', (value: string) => value],
+      ['with gzip content encoding', 'gzip', gzipSync],
+      ['with deflate content encoding', 'deflate', deflateSync],
+      ['with Brotli content encoding', 'br', brotliCompressSync],
     ] as const)(
       'should rewrite and proxy relative HLS segment URLs end to end %s',
-      async (_encodingCase, contentEncoding) => {
+      async (_encodingCase, contentEncoding, encodePlaylist) => {
         const segmentPayload = Buffer.from('segment-bytes');
         const { server: upstreamServer, baseUrl } =
           await startLocalUpstreamServer((req, res) => {
@@ -641,15 +644,16 @@ describe('AudioProxyServer', () => {
             }
             if (req.url === '/hls/master.m3u8') {
               const playlist = '#EXTM3U\n#EXTINF:10,\nsegments/one.ts\n';
+              const responseBody = encodePlaylist(playlist);
               const headers: Record<string, string> = {
                 'Content-Type': 'application/vnd.apple.mpegurl',
-                'Content-Length': String(Buffer.byteLength(playlist)),
+                'Content-Length': String(Buffer.byteLength(responseBody)),
               };
               if (contentEncoding) {
                 headers['Content-Encoding'] = contentEncoding;
               }
               res.writeHead(200, headers);
-              res.end(playlist);
+              res.end(responseBody);
               return;
             }
             if (req.url === '/hls/segments/one.ts') {
@@ -677,8 +681,13 @@ describe('AudioProxyServer', () => {
 
           expect(rewrittenSegmentPath).toBeDefined();
           expect(manifestResponse.headers['content-length']).not.toBe(
-            String(Buffer.byteLength('#EXTM3U\n#EXTINF:10,\nsegments/one.ts\n'))
+            String(
+              Buffer.byteLength(
+                encodePlaylist('#EXTM3U\n#EXTINF:10,\nsegments/one.ts\n')
+              )
+            )
           );
+          expect(manifestResponse.headers['content-encoding']).toBeUndefined();
 
           const segmentResponse = await axios.get(
             `${server.getProxyUrl()}${rewrittenSegmentPath}`,
@@ -1002,6 +1011,70 @@ describe('AudioProxyServer', () => {
         expect(errorResponse.response.data.error).toBe(
           'HLS playlist is too large'
         );
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
+      }
+    });
+
+    it('should enforce the HLS size limit after decompression', async () => {
+      const oversizedPlaylist = Buffer.alloc(2 * 1024 * 1024 + 1, 65);
+      const compressedPlaylist = gzipSync(oversizedPlaylist);
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((_req, res) => {
+          res.writeHead(200, {
+            'Content-Type': 'application/vnd.apple.mpegurl',
+            'Content-Encoding': 'gzip',
+            'Content-Length': String(compressedPlaylist.length),
+          });
+          res.end(compressedPlaylist);
+        });
+
+      try {
+        await expect(
+          axios.get(`${server.getProxyUrl()}/proxy`, {
+            params: { url: `${baseUrl}/oversized-compressed.m3u8` },
+          })
+        ).rejects.toMatchObject({
+          response: {
+            status: 413,
+            headers: {
+              'content-type': expect.stringContaining('application/json'),
+            },
+            data: {
+              error: 'HLS playlist is too large',
+            },
+          },
+        });
+      } finally {
+        await stopLocalUpstreamServer(upstreamServer);
+      }
+    });
+
+    it('should reject unsupported compressed HLS instead of forwarding broken references', async () => {
+      const playlist = '#EXTM3U\n#EXTINF:10,\nsegments/one.ts\n';
+      const { server: upstreamServer, baseUrl } =
+        await startLocalUpstreamServer((_req, res) => {
+          res.writeHead(200, {
+            'Content-Type': 'application/vnd.apple.mpegurl',
+            'Content-Encoding': 'zstd',
+            'Content-Length': String(Buffer.byteLength(playlist)),
+          });
+          res.end(playlist);
+        });
+
+      try {
+        await expect(
+          axios.get(`${server.getProxyUrl()}/proxy`, {
+            params: { url: `${baseUrl}/unsupported-encoding.m3u8` },
+          })
+        ).rejects.toMatchObject({
+          response: {
+            status: 502,
+            data: {
+              error: 'Unsupported HLS content encoding',
+            },
+          },
+        });
       } finally {
         await stopLocalUpstreamServer(upstreamServer);
       }
