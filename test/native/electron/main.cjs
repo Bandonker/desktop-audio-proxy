@@ -27,6 +27,11 @@ app.whenReady().then(async () => {
   window.webContents.on('did-fail-load', (_event, code, description) => {
     finish({ ok: false, host: 'electron', error: `${code}: ${description}` });
   });
+  window.webContents.on('console-message', details => {
+    process.stderr.write(
+      `ELECTRON_RENDERER[${details.level}]: ${details.message}\n`
+    );
+  });
   const query = {
     host: 'electron',
     proxy: process.env.DAP_SMOKE_PROXY,

@@ -15,7 +15,8 @@
   `null`.
 - Converted recognized Windows UNC media paths through Tauri's asset protocol.
 - Increased the Tauri smoke fixture's startup allowance and added child-process
-  diagnostics for slow GitHub-hosted Windows runners.
+  diagnostics plus bounded Electron renderer health retries for slow
+  GitHub-hosted Windows runners.
 - Kept Electron/Tauri CI on Windows while moving the independent Playwright
   WebKit smoke to Ubuntu with its required system dependencies.
 - Corrected recognized media extensions, including HLS playlists, when an

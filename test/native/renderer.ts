@@ -29,6 +29,43 @@ declare global {
   }
 }
 
+const PROXY_STARTUP_TIMEOUT_MS = 15_000;
+const PROXY_RETRY_DELAY_MS = 250;
+
+async function waitForProxyAvailability(
+  service: { isProxyAvailable(): Promise<boolean> },
+  timeoutMs = PROXY_STARTUP_TIMEOUT_MS
+): Promise<{ available: boolean; attempts: number; elapsedMs: number }> {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  let attempts = 0;
+
+  do {
+    attempts += 1;
+    if (await service.isProxyAvailable()) {
+      return {
+        available: true,
+        attempts,
+        elapsedMs: Date.now() - startedAt,
+      };
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      break;
+    }
+    await new Promise(resolve =>
+      setTimeout(resolve, Math.min(PROXY_RETRY_DELAY_MS, remainingMs))
+    );
+  } while (Date.now() < deadline);
+
+  return {
+    available: false,
+    attempts,
+    elapsedMs: Date.now() - startedAt,
+  };
+}
+
 async function getParameters(): Promise<{
   expectedHost: SmokeHost;
   proxyUrl: string;
@@ -140,8 +177,12 @@ async function run(): Promise<void> {
       `Expected ${expectedHost} environment, received ${environment}`
     );
   }
-  if (!(await service.isProxyAvailable())) {
-    throw new Error('Proxy health check failed');
+  const proxyReadiness = await waitForProxyAvailability(service);
+  if (!proxyReadiness.available) {
+    throw new Error(
+      `Proxy health check failed after ${proxyReadiness.attempts} attempts ` +
+        `over ${proxyReadiness.elapsedMs}ms`
+    );
   }
 
   const media = document.querySelector<HTMLAudioElement>('#player')!;
