@@ -70,6 +70,9 @@ verify:docs`, and a demo smoke test; referenced screenshots must come from a
 
 - `src/server-impl.ts` owns the Express proxy implementation; `src/server.ts` is its public server entry.
 - `src/client.ts` owns proxy selection and URL conversion.
+- `AudioProxyClient.stopProxyServer()` permanently disables client-owned
+  auto-start for that instance; preserve this shutdown boundary in lifecycle
+  changes.
 - `src/media-element.ts` owns the race-safe controller for existing
   `<audio>`/`<video>` elements.
 - `src/media-compatibility.ts` owns runtime engine detection, typed source

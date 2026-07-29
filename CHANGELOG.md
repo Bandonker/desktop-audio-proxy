@@ -17,6 +17,8 @@
 - Extended media-controller cancellation across pending proxy resolution and
   `element.play()` calls so stopped, disposed, or superseded work resolves to
   `null`.
+- Prevented pending URL conversions from auto-starting a new proxy after
+  application-shutdown cleanup has begun.
 - Converted recognized Windows UNC media paths through Tauri's asset protocol.
 - Increased the Tauri smoke fixture's startup allowance and added child-process
   diagnostics plus bounded Electron renderer health retries for slow

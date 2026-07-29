@@ -186,6 +186,40 @@ describe('AudioProxyClient', () => {
       expect(result).toBe(expectedProxyUrl);
     });
 
+    it('should not auto-start after shutdown begins during a health check', async () => {
+      delete (global as GlobalMock).window;
+      const shutdownClient = new AudioProxyClient({
+        proxyUrl: 'http://localhost:3001',
+        autoDetect: false,
+        autoStartProxy: true,
+        fallbackToOriginal: true,
+        retryAttempts: 1,
+      });
+      let resolveHealthCheck: ((available: boolean) => void) | undefined;
+      jest.spyOn(shutdownClient, 'isProxyAvailable').mockReturnValueOnce(
+        new Promise<boolean>(resolve => {
+          resolveHealthCheck = resolve;
+        })
+      );
+      const startProxySpy = jest
+        .spyOn(
+          shutdownClient as unknown as {
+            startProxyServer: () => Promise<boolean>;
+          },
+          'startProxyServer'
+        )
+        .mockResolvedValue(true);
+      const mediaUrl = 'https://example.com/live.mp3';
+
+      const conversion = shutdownClient.getPlayableUrl(mediaUrl);
+      await Promise.resolve();
+      await shutdownClient.stopProxyServer();
+      resolveHealthCheck?.(false);
+
+      await expect(conversion).resolves.toBe(mediaUrl);
+      expect(startProxySpy).not.toHaveBeenCalled();
+    });
+
     it('should handle file:// URLs directly', async () => {
       const fileUrl = 'file:///path/to/audio.mp3';
       const result = await client.getPlayableUrl(fileUrl);

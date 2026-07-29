@@ -122,6 +122,7 @@ export class AudioProxyClient {
   private environment: Environment;
   private autoStartedServer: AutoStartedProxyServer | null = null;
   private autoStartPromise: Promise<boolean> | null = null;
+  private proxyShutdownRequested = false;
   private telemetry: TelemetryManager;
 
   /**
@@ -187,6 +188,10 @@ export class AudioProxyClient {
   }
 
   private async startProxyServer(): Promise<boolean> {
+    if (this.proxyShutdownRequested) {
+      return false;
+    }
+
     if (this.autoStartPromise) {
       return this.autoStartPromise;
     }
@@ -204,6 +209,10 @@ export class AudioProxyClient {
   }
 
   private async startProxyServerInternal(): Promise<boolean> {
+    if (this.proxyShutdownRequested) {
+      return false;
+    }
+
     // Only works in Node.js environment
     if (typeof window !== 'undefined') {
       console.warn(
@@ -227,6 +236,10 @@ export class AudioProxyClient {
       }
       const startProxyServer = serverModule.startProxyServer;
 
+      if (this.proxyShutdownRequested) {
+        return false;
+      }
+
       const url = new URL(this.options.proxyUrl);
       if (url.protocol !== 'http:') {
         throw new Error('Auto-start requires an http:// proxyUrl');
@@ -249,13 +262,19 @@ export class AudioProxyClient {
         port: configuredPort,
       });
 
+      if (this.proxyShutdownRequested) {
+        await this.autoStartedServer.stop();
+        this.autoStartedServer = null;
+        return false;
+      }
+
       const runtimeProxyUrl = this.autoStartedServer.getProxyUrl?.();
       if (runtimeProxyUrl) {
         this.options.proxyUrl = normalizeProxyUrl(runtimeProxyUrl);
       }
 
       const available = await this.isProxyAvailable();
-      if (available) {
+      if (available && !this.proxyShutdownRequested) {
         console.log(
           '[AudioProxyClient] Proxy server auto-started successfully'
         );
@@ -454,7 +473,8 @@ export class AudioProxyClient {
       if (
         !proxyAvailable &&
         this.options.autoStartProxy &&
-        !this.autoStartedServer
+        !this.autoStartedServer &&
+        !this.proxyShutdownRequested
       ) {
         console.log(
           '[AudioProxyClient] Attempting to auto-start proxy server...'
@@ -603,8 +623,9 @@ export class AudioProxyClient {
   }
 
   /**
-   * Stops the auto-started proxy server if it was started by this client.
-   * Call this during application shutdown to release the listening socket.
+   * Stops the auto-started proxy server if it was started by this client and
+   * permanently disables future auto-starts for this client instance. Call
+   * this during application shutdown to release the listening socket.
    *
    * @example
    * ```typescript
@@ -612,6 +633,8 @@ export class AudioProxyClient {
    * ```
    */
   public async stopProxyServer(): Promise<void> {
+    this.proxyShutdownRequested = true;
+
     if (this.autoStartPromise) {
       await this.autoStartPromise;
     }

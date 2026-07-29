@@ -21564,6 +21564,7 @@ var DAPReactDemo = (() => {
     constructor(options = {}) {
       this.autoStartedServer = null;
       this.autoStartPromise = null;
+      this.proxyShutdownRequested = false;
       var _a, _b, _c, _d, _e, _f, _g, _h;
       const retryAttempts = (_a = options.retryAttempts) != null ? _a : DEFAULT_RETRY_ATTEMPTS;
       const retryDelay = (_b = options.retryDelay) != null ? _b : DEFAULT_RETRY_DELAY_MS;
@@ -21605,6 +21606,9 @@ var DAPReactDemo = (() => {
       return this.options.proxyUrl;
     }
     async startProxyServer() {
+      if (this.proxyShutdownRequested) {
+        return false;
+      }
       if (this.autoStartPromise) {
         return this.autoStartPromise;
       }
@@ -21620,6 +21624,9 @@ var DAPReactDemo = (() => {
     }
     async startProxyServerInternal() {
       var _a, _b, _c, _d;
+      if (this.proxyShutdownRequested) {
+        return false;
+      }
       if (typeof window !== "undefined") {
         console.warn(
           "[AudioProxyClient] Cannot auto-start proxy server in browser environment"
@@ -21633,6 +21640,9 @@ var DAPReactDemo = (() => {
           throw new Error("startProxyServer export not found in server module");
         }
         const startProxyServer = serverModule.startProxyServer;
+        if (this.proxyShutdownRequested) {
+          return false;
+        }
         const url = new URL(this.options.proxyUrl);
         if (url.protocol !== "http:") {
           throw new Error("Auto-start requires an http:// proxyUrl");
@@ -21649,12 +21659,17 @@ var DAPReactDemo = (() => {
           host: configuredHost,
           port: configuredPort
         });
+        if (this.proxyShutdownRequested) {
+          await this.autoStartedServer.stop();
+          this.autoStartedServer = null;
+          return false;
+        }
         const runtimeProxyUrl = (_d = (_c = this.autoStartedServer).getProxyUrl) == null ? void 0 : _d.call(_c);
         if (runtimeProxyUrl) {
           this.options.proxyUrl = normalizeProxyUrl(runtimeProxyUrl);
         }
         const available = await this.isProxyAvailable();
-        if (available) {
+        if (available && !this.proxyShutdownRequested) {
           console.log(
             "[AudioProxyClient] Proxy server auto-started successfully"
           );
@@ -21821,7 +21836,7 @@ var DAPReactDemo = (() => {
       console.log("[AudioProxyClient] Proxy required, checking availability...");
       for (let attempt = 1; attempt <= this.options.retryAttempts; attempt++) {
         let proxyAvailable = await this.isProxyAvailable();
-        if (!proxyAvailable && this.options.autoStartProxy && !this.autoStartedServer) {
+        if (!proxyAvailable && this.options.autoStartProxy && !this.autoStartedServer && !this.proxyShutdownRequested) {
           console.log(
             "[AudioProxyClient] Attempting to auto-start proxy server..."
           );
@@ -21910,7 +21925,7 @@ var DAPReactDemo = (() => {
           if (!convertFileSrc && window.__TAURI__.tauri) {
             convertFileSrc = window.__TAURI__.tauri.convertFileSrc;
           }
-          if (convertFileSrc && (url.startsWith("file://") || url.startsWith("/") || WINDOWS_PATH_REGEX.test(url))) {
+          if (convertFileSrc && (url.startsWith("file://") || url.startsWith("/") || WINDOWS_PATH_REGEX.test(url) || WINDOWS_UNC_PATH_REGEX.test(url))) {
             return convertFileSrc(url);
           }
         } catch (error) {
@@ -21926,8 +21941,9 @@ var DAPReactDemo = (() => {
       return new Promise((resolve) => setTimeout(resolve, ms));
     }
     /**
-     * Stops the auto-started proxy server if it was started by this client.
-     * Call this during application shutdown to release the listening socket.
+     * Stops the auto-started proxy server if it was started by this client and
+     * permanently disables future auto-starts for this client instance. Call
+     * this during application shutdown to release the listening socket.
      *
      * @example
      * ```typescript
@@ -21935,6 +21951,7 @@ var DAPReactDemo = (() => {
      * ```
      */
     async stopProxyServer() {
+      this.proxyShutdownRequested = true;
       if (this.autoStartPromise) {
         await this.autoStartPromise;
       }

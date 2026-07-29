@@ -587,7 +587,9 @@ await audioClient.stopProxyServer();
 1. Client checks if proxy server is available
 2. If not available and `autoStartProxy` is enabled, starts proxy automatically
 3. Only happens in Node.js environments (browser-safe)
-4. Your application calls `stopProxyServer()` during shutdown to release the socket
+4. Your application calls `stopProxyServer()` during shutdown to release the
+   socket and permanently prevent that client instance from auto-starting
+   another server; create a new client if auto-start is needed again
 
 ### Electron Integration
 
