@@ -5,8 +5,8 @@
 ### Fixed
 
 - Expanded known HLS `{$variable}` definitions before URL resolution and
-  preserved unresolved imports and their upstream base while rewriting
-  variants, segments, and keys.
+  carried bounded parent definitions into child playlists so imported values
+  retain their upstream base and URI delimiters.
 - Rejected unfollowed upstream redirects instead of reporting them as playable
   metadata or returning a redirect without a usable destination.
 - Rewrote HLS playlists that explicitly declare identity content encoding.

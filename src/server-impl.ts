@@ -21,6 +21,8 @@ const DEFAULT_ACCEPT_HEADER =
   'audio/*,video/*,application/vnd.apple.mpegurl,application/x-mpegURL,*/*;q=0.1';
 const DEFAULT_ACCEPT_LANGUAGE_HEADER = 'en-US,en;q=0.9';
 const MAX_HLS_PLAYLIST_BYTES = 2 * 1024 * 1024;
+const MAX_HLS_VARIABLE_CONTEXT_BYTES = 16 * 1024;
+const MAX_HLS_VARIABLE_COUNT = 128;
 
 const CORS_EXPOSED_HEADERS = [
   'Content-Length',
@@ -172,6 +174,7 @@ function createNetworkPolicyError(message: string): NodeJS.ErrnoException {
   return error;
 }
 
+const HLS_VARIABLE_NAME_REGEX = /^[A-Za-z0-9_-]+$/;
 const HLS_VARIABLE_REFERENCE_REGEX = /\{\$([A-Za-z0-9_-]+)\}/g;
 
 function encodeHlsVariableTemplate(value: string): string {
@@ -199,16 +202,91 @@ function expandKnownHlsVariables(
   return expanded;
 }
 
+function encodeHlsVariableContext(
+  definitions: ReadonlyMap<string, string>
+): string | undefined {
+  if (definitions.size === 0 || definitions.size > MAX_HLS_VARIABLE_COUNT) {
+    return undefined;
+  }
+
+  const entries = Array.from(definitions, ([name, value]) => [
+    name,
+    expandKnownHlsVariables(value, definitions),
+  ]);
+  const serialized = JSON.stringify(entries);
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_HLS_VARIABLE_CONTEXT_BYTES) {
+    return undefined;
+  }
+
+  return Buffer.from(serialized, 'utf8').toString('base64');
+}
+
+function decodeHlsVariableContext(value: unknown): Map<string, string> | null {
+  if (value === undefined) {
+    return new Map();
+  }
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > Math.ceil((MAX_HLS_VARIABLE_CONTEXT_BYTES * 4) / 3) + 4 ||
+    value.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
+  ) {
+    return null;
+  }
+
+  try {
+    const decoded = Buffer.from(value, 'base64').toString('utf8');
+    if (Buffer.byteLength(decoded, 'utf8') > MAX_HLS_VARIABLE_CONTEXT_BYTES) {
+      return null;
+    }
+    const entries: unknown = JSON.parse(decoded);
+    if (!Array.isArray(entries) || entries.length > MAX_HLS_VARIABLE_COUNT) {
+      return null;
+    }
+
+    const definitions = new Map<string, string>();
+    for (const entry of entries) {
+      if (
+        !Array.isArray(entry) ||
+        entry.length !== 2 ||
+        typeof entry[0] !== 'string' ||
+        !HLS_VARIABLE_NAME_REGEX.test(entry[0]) ||
+        typeof entry[1] !== 'string'
+      ) {
+        return null;
+      }
+      definitions.set(entry[0], entry[1]);
+    }
+    return definitions;
+  } catch {
+    return null;
+  }
+}
+
+function appendHlsVariableContext(
+  proxyReference: string,
+  variableContext: string | undefined
+): string {
+  return variableContext
+    ? `${proxyReference}&hlsvars=${encodeURIComponent(variableContext)}`
+    : proxyReference;
+}
+
 function toProxiedPlaylistReference(
   reference: string,
   baseUrl: string,
-  definitions: ReadonlyMap<string, string>
+  definitions: ReadonlyMap<string, string>,
+  variableContext: string | undefined
 ): string {
   const expandedReference = expandKnownHlsVariables(reference, definitions);
   if (/^\{\$[A-Za-z0-9_-]+\}/.test(expandedReference)) {
-    return `/proxy?base=${encodeURIComponent(
-      baseUrl
-    )}&reference=${encodeHlsVariableTemplate(expandedReference)}`;
+    return appendHlsVariableContext(
+      `/proxy?base=${encodeURIComponent(
+        baseUrl
+      )}&reference=${encodeHlsVariableTemplate(expandedReference)}`,
+      variableContext
+    );
   }
 
   const unresolvedVariables: Array<{
@@ -246,7 +324,10 @@ function toProxiedPlaylistReference(
         .split(encodeURIComponent(variable.placeholder))
         .join(variable.reference);
     }
-    return `/proxy?url=${encodedUrl}`;
+    return appendHlsVariableContext(
+      `/proxy?url=${encodedUrl}`,
+      variableContext
+    );
   } catch {
     return reference;
   }
@@ -254,14 +335,15 @@ function toProxiedPlaylistReference(
 
 function getHlsQuotedAttribute(
   attributeList: string,
-  name: 'NAME' | 'VALUE' | 'QUERYPARAM'
+  name: 'NAME' | 'VALUE' | 'QUERYPARAM' | 'IMPORT'
 ): string | undefined {
   return new RegExp(`(?:^|,)${name}="([^"]*)"`).exec(attributeList)?.[1];
 }
 
 function collectHlsVariableDefinitions(
   lines: readonly string[],
-  baseUrl: string
+  baseUrl: string,
+  inheritedDefinitions: ReadonlyMap<string, string>
 ): Map<string, string> {
   const definitions = new Map<string, string>();
   let baseQuery: URLSearchParams | undefined;
@@ -280,13 +362,29 @@ function collectHlsVariableDefinitions(
     const attributeList = trimmedLine.slice(prefix.length);
     const name = getHlsQuotedAttribute(attributeList, 'NAME');
     const value = getHlsQuotedAttribute(attributeList, 'VALUE');
-    if (name && value !== undefined) {
+    if (name && HLS_VARIABLE_NAME_REGEX.test(name) && value !== undefined) {
       definitions.set(name, value);
       continue;
     }
     const queryParameter = getHlsQuotedAttribute(attributeList, 'QUERYPARAM');
-    if (queryParameter && baseQuery?.has(queryParameter)) {
+    if (
+      queryParameter &&
+      HLS_VARIABLE_NAME_REGEX.test(queryParameter) &&
+      baseQuery?.has(queryParameter)
+    ) {
       definitions.set(queryParameter, baseQuery.get(queryParameter) ?? '');
+      continue;
+    }
+    const importedName = getHlsQuotedAttribute(attributeList, 'IMPORT');
+    if (
+      importedName &&
+      HLS_VARIABLE_NAME_REGEX.test(importedName) &&
+      inheritedDefinitions.has(importedName)
+    ) {
+      definitions.set(
+        importedName,
+        inheritedDefinitions.get(importedName) ?? ''
+      );
     }
   }
   return definitions;
@@ -344,9 +442,32 @@ function isValidAllowedHostPattern(entry: string): boolean {
   });
 }
 
-export function rewriteHlsPlaylist(playlist: string, baseUrl: string): string {
+function isLikelyHlsPlaylistReference(reference: string): boolean {
+  return /\.m3u8(?:$|[?#])/i.test(reference);
+}
+
+function hlsTagReferencesPlaylist(tag: string): boolean {
+  return (
+    tag.startsWith('#EXT-X-MEDIA:') ||
+    tag.startsWith('#EXT-X-I-FRAME-STREAM-INF:') ||
+    tag.startsWith('#EXT-X-IMAGE-STREAM-INF:') ||
+    tag.startsWith('#EXT-X-RENDITION-REPORT:')
+  );
+}
+
+export function rewriteHlsPlaylist(
+  playlist: string,
+  baseUrl: string,
+  inheritedDefinitions: ReadonlyMap<string, string> = new Map()
+): string {
   const lines = playlist.split(/\r?\n/);
-  const definitions = collectHlsVariableDefinitions(lines, baseUrl);
+  const definitions = collectHlsVariableDefinitions(
+    lines,
+    baseUrl,
+    inheritedDefinitions
+  );
+  const variableContext = encodeHlsVariableContext(definitions);
+  let nextReferenceIsPlaylist = false;
   return lines
     .map(line => {
       const trimmedLine = line.trim();
@@ -355,13 +476,20 @@ export function rewriteHlsPlaylist(playlist: string, baseUrl: string): string {
       }
 
       if (trimmedLine.startsWith('#')) {
+        if (trimmedLine.startsWith('#EXT-X-STREAM-INF:')) {
+          nextReferenceIsPlaylist = true;
+        }
+        const tagVariableContext = hlsTagReferencesPlaylist(trimmedLine)
+          ? variableContext
+          : undefined;
         return line.replace(
           /URI="([^"]+)"/g,
           (_match, reference: string) =>
             `URI="${toProxiedPlaylistReference(
               reference,
               baseUrl,
-              definitions
+              definitions,
+              tagVariableContext
             )}"`
         );
       }
@@ -371,9 +499,19 @@ export function rewriteHlsPlaylist(playlist: string, baseUrl: string): string {
         line.length - line.trimStart().length
       );
       const trailingWhitespace = line.slice(line.trimEnd().length);
+      const referenceVariableContext =
+        nextReferenceIsPlaylist || isLikelyHlsPlaylistReference(trimmedLine)
+          ? variableContext
+          : undefined;
+      nextReferenceIsPlaylist = false;
       return (
         leadingWhitespace +
-        toProxiedPlaylistReference(trimmedLine, baseUrl, definitions) +
+        toProxiedPlaylistReference(
+          trimmedLine,
+          baseUrl,
+          definitions,
+          referenceVariableContext
+        ) +
         trailingWhitespace
       );
     })
@@ -730,6 +868,15 @@ export class AudioProxyServer {
         });
       }
       const url = validationResult.url;
+      const inheritedHlsDefinitions = decodeHlsVariableContext(
+        req.query.hlsvars
+      );
+      if (inheritedHlsDefinitions === null) {
+        return res.status(400).json({
+          error: 'Invalid HLS variable context',
+          message: 'Use a proxy URL generated from a trusted parent playlist',
+        });
+      }
 
       try {
         // Prepare request headers
@@ -809,7 +956,8 @@ export class AudioProxyServer {
             }
             const rewrittenPlaylist = rewriteHlsPlaylist(
               playlistBuffer.toString('utf8'),
-              finalUrl
+              finalUrl,
+              inheritedHlsDefinitions
             );
             res.removeHeader('content-length');
             return res.send(rewrittenPlaylist);
