@@ -43,8 +43,9 @@ assert(
   'README is missing the proxy host allowlist guidance'
 );
 assert(
-  readme.includes('The npm `latest` tag is still `1.1.7`'),
-  'README must distinguish the unreleased 1.1.8 workspace from npm latest'
+  readme.includes('version `1.1.8` is published on npm') &&
+    readme.includes('`npm install desktop-audio-proxy` installs the release'),
+  'README must state the published 1.1.8 npm install status'
 );
 assert(
   /does\s+not ship the native metadata extractor/.test(readme),

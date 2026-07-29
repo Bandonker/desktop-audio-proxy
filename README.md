@@ -144,12 +144,10 @@ yarn add desktop-audio-proxy
 pnpm add desktop-audio-proxy
 ```
 
-> **Release status:** this branch and its screenshots document the upcoming
-> `1.1.8` package. The npm `latest` tag is still `1.1.7` as of July 28, 2026.
-> Until `1.1.8` is published, use this workspace or a locally packed build for
-> `createMediaElementController`, `allowedHosts`, and the other `1.1.8`
-> additions. A normal `npm install desktop-audio-proxy` currently installs
-> `1.1.7`.
+> **Release status:** version `1.1.8` is published on npm. A normal
+> `npm install desktop-audio-proxy` installs the release with
+> `createMediaElementController`, `allowedHosts`, and the other documented
+> `1.1.8` additions.
 
 ### Runtime Requirements
 
