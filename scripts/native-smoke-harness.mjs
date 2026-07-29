@@ -85,7 +85,7 @@ const upstream = http.createServer((request, response) => {
     }
     const payload = wave.subarray(start, end + 1);
     response.writeHead(206, {
-      'Content-Type': 'application/octet-stream',
+      'Content-Type': 'audio/wav',
       'Content-Length': payload.length,
       'Content-Range': `bytes ${start}-${end}/${wave.length}`,
       'Accept-Ranges': 'bytes',
@@ -94,7 +94,7 @@ const upstream = http.createServer((request, response) => {
     return;
   }
   response.writeHead(200, {
-    'Content-Type': 'application/octet-stream',
+    'Content-Type': 'audio/wav',
     'Content-Length': wave.length,
     'Accept-Ranges': 'bytes',
   });
