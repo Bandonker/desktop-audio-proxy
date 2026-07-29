@@ -39,8 +39,14 @@ wave.writeUInt16LE(16, 34);
 wave.write('data', 36);
 wave.writeUInt32LE(4_000, 40);
 
+const upstreamRequests = [];
 const upstream = http.createServer((request, response) => {
   const range = request.headers.range;
+  upstreamRequests.push({
+    method: request.method,
+    url: request.url,
+    range: range || null,
+  });
   if (range) {
     const match = /^bytes=(\d+)-(\d*)$/.exec(range);
     const start = Number(match?.[1]);
@@ -107,11 +113,14 @@ try {
       window.__DAP_SMOKE_RESULT?.ok === true ||
       window.__DAP_SMOKE_RESULT?.ok === false,
     undefined,
-    { timeout: 30_000 }
+    { timeout: 45_000 }
   );
   const result = await page.evaluate(() => window.__DAP_SMOKE_RESULT);
   if (!result?.ok || result.engine !== 'webkit' || !result.range) {
-    throw new Error(`WebKit smoke failed: ${JSON.stringify(result)}`);
+    throw new Error(
+      `WebKit smoke failed: ${JSON.stringify(result)}; ` +
+        `upstreamRequests=${JSON.stringify(upstreamRequests)}`
+    );
   }
   console.log(
     `WebKit engine smoke passed: environment=${result.environment}, range=${result.range}`

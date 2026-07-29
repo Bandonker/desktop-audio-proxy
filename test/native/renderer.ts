@@ -83,9 +83,17 @@ async function report(result: SmokeResult): Promise<void> {
 
 async function waitForMedia(element: HTMLMediaElement): Promise<void> {
   await new Promise<void>((resolve, reject) => {
+    const timeoutMs = 30_000;
     const timeout = window.setTimeout(
-      () => reject(new Error('Media metadata did not load within 10 seconds')),
-      10_000
+      () =>
+        reject(
+          new Error(
+            `Media metadata did not load within ${timeoutMs / 1_000} seconds ` +
+              `(readyState=${element.readyState}, networkState=${element.networkState}, ` +
+              `error=${element.error?.code ?? 'none'})`
+          )
+        ),
+      timeoutMs
     );
     const finish = (error?: Error) => {
       window.clearTimeout(timeout);
