@@ -17,7 +17,7 @@ const outfile = path.join(root, 'demo', 'react-player.bundle.js');
       format: 'iife',
       globalName: 'DAPReactDemo',
       platform: 'browser',
-      target: ['es2018']
+      target: ['es2018'],
     });
     console.log('Built demo bundle:', outfile);
   } catch (err) {

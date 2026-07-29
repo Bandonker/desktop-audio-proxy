@@ -6,8 +6,8 @@ We actively support the following versions of desktop-audio-proxy with security 
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| 1.1.x   | :white_check_mark: |
+| < 1.1   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -29,7 +29,7 @@ We take security vulnerabilities seriously. If you discover a security vulnerabi
 
 Please include as much of the following information as possible:
 
-- **Vulnerability Type**: CORS bypass, code injection, etc.
+- **Vulnerability Type**: CORS policy issue, code injection, etc.
 - **Affected Components**: Client, server, specific services
 - **Environment**: Tauri/Electron/Web, OS, Node.js version
 - **Reproduction Steps**: Clear, step-by-step instructions
@@ -55,8 +55,9 @@ When using desktop-audio-proxy, please be aware of these security considerations
 
 #### URL Handling
 - Be cautious with user-provided URLs
-- Validate and sanitize URLs before processing
-- Consider implementing URL allowlists for production use
+- Keep private-address blocking enabled
+- Configure `allowedHosts` for curated station catalogs and include only
+  required HLS/CDN suffixes
 
 #### Electron/Tauri Integration
 - Follow security best practices for your desktop framework

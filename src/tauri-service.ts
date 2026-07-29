@@ -57,6 +57,9 @@ export class TauriAudioService {
   }
 
   private getTauriInvoke() {
+    if (typeof window === 'undefined') {
+      return null;
+    }
     const tauri = window.__TAURI__;
     if (!tauri) {
       return null;
@@ -70,7 +73,7 @@ export class TauriAudioService {
     missingCodecs: string[];
     capabilities: Record<string, string>;
   }> {
-    const audio = new Audio();
+    const audio = typeof Audio === 'undefined' ? null : new Audio();
 
     const supportedFormats: string[] = [];
     const missingCodecs: string[] = [];
@@ -81,7 +84,7 @@ export class TauriAudioService {
       let isSupported = false;
 
       // Test basic MIME type
-      const basicSupport = audio.canPlayType(format.mime);
+      const basicSupport = audio?.canPlayType(format.mime) ?? '';
       capabilities[`${format.name}_basic`] = basicSupport;
 
       if (isSupportedResult(basicSupport)) {
@@ -91,9 +94,8 @@ export class TauriAudioService {
 
       // Test with codecs
       for (const codec of format.codecs) {
-        const codecSupport = audio.canPlayType(
-          `${format.mime}; codecs="${codec}"`
-        );
+        const codecSupport =
+          audio?.canPlayType(`${format.mime}; codecs="${codec}"`) ?? '';
         capabilities[`${format.name}_${codec}`] = codecSupport;
 
         if (codecSupport === 'probably') {
@@ -158,7 +160,11 @@ export class TauriAudioService {
     channels?: number;
     format?: string;
   } | null> {
-    if (this.getEnvironment() !== 'tauri' || !window.__TAURI__) {
+    if (
+      this.getEnvironment() !== 'tauri' ||
+      typeof window === 'undefined' ||
+      !window.__TAURI__
+    ) {
       return null;
     }
 
@@ -187,7 +193,11 @@ export class TauriAudioService {
     inputDevices: Array<{ id: string; name: string }>;
     outputDevices: Array<{ id: string; name: string }>;
   } | null> {
-    if (this.getEnvironment() !== 'tauri' || !window.__TAURI__) {
+    if (
+      this.getEnvironment() !== 'tauri' ||
+      typeof window === 'undefined' ||
+      !window.__TAURI__
+    ) {
       return null;
     }
 

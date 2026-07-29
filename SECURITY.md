@@ -6,6 +6,16 @@ This document reflects the **current implemented behavior** of the repository an
 
 ### Request handling and bounds
 - Proxy and info routes require a `url` query parameter and reject blank values.
+- Only absolute HTTP(S) targets are accepted, and URL credentials are rejected.
+- Private, loopback, link-local, reserved, and other non-public literal IP
+  addresses are blocked by default.
+- DNS results are checked at connection time, including mixed public/private
+  answers, and every redirect target is revalidated.
+- Optional `allowedHosts` rules enforce exact hosts and boundary-safe wildcard
+  subdomains on initial requests and redirects. An explicit empty list denies
+  every outbound target.
+- Environment HTTP proxy settings are bypassed while the outbound network
+  policy is active so they cannot sidestep destination validation.
 - Upstream requests are bounded by configurable `timeout` and `maxRedirects` values.
 - Error responses are normalized for timeout/DNS/connection-refused scenarios.
 
@@ -15,7 +25,17 @@ This document reflects the **current implemented behavior** of the repository an
 
 ### CORS behavior
 - CORS behavior is configurable through `corsOrigins`.
-- Default behavior is compatibility-oriented (`*`) and should be tightened by deployers for production use.
+- Default behavior is compatibility-oriented (`*`) and does not advertise
+  credential support.
+- Explicit origins may use credentialed CORS and should be restricted to
+  trusted application origins.
+
+### Data minimization and resource bounds
+- Only media-relevant response headers are forwarded; upstream cookies and
+  custom/internal headers are not exposed.
+- Metadata caching has a configurable TTL and bounded entry count.
+- Diagnostic logs and built-in telemetry redact remote URL paths, query values,
+  and credentials.
 
 ### Logging and telemetry
 - Request logging is optional (`enableLogging`) and can be disabled.
@@ -26,40 +46,35 @@ This document reflects the **current implemented behavior** of the repository an
 The following protections are **not currently provided by this library out of the box** and should be implemented in the host application and deployment environment:
 
 - Built-in authentication/authorization for proxy endpoints
-- Built-in URL allowlist/denylist enforcement for outbound proxy targets
 - Built-in rate limiting and abuse throttling
-- Built-in SSRF egress policy controls (network segmentation/firewalling remains external)
-- Built-in request/response body size enforcement controls
+- General streamed-response size caps (HLS manifest metadata is limited to 2 MiB)
 
 ## Best Practices
 
-#### 1. URL Whitelisting in your app
+#### 1. Restrict outbound station hosts
 ```typescript
-// Recommended: Validate URLs before passing to the library
-const allowedDomains = ['example.com', 'cdn.example.com'];
-
-function isAllowedUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return allowedDomains.some(domain => parsed.hostname.endsWith(domain));
-  } catch {
-    return false;
-  }
-}
-
-if (isAllowedUrl(audioUrl)) {
-  const playableUrl = await client.getPlayableUrl(audioUrl);
-}
+const server = await startProxyServer({
+  allowedHosts: [
+    'stream.example.com',
+    '*.trusted-radio-cdn.example',
+  ],
+});
 ```
+
+HLS playlists may reference separate hosts for variants, keys, and segments.
+Add only the CDN suffixes actually required by the station catalog.
 
 #### 2. Restrictive proxy config in production
 ```typescript
 // Restrict CORS and tighten request limits in production
 const server = await startProxyServer({
   port: 3002,
+  host: 'localhost',
   corsOrigins: ['https://yourapp.com'],
+  allowedHosts: ['stream.example.com', '*.trusted-radio-cdn.example'],
   timeout: 30000,
   maxRedirects: 5,
+  maxCacheEntries: 128,
   enableLogging: false,
 });
 ```
@@ -92,10 +107,12 @@ If you discover a security vulnerability, please message me or open a security a
 ## Known Security Considerations
 
 ### 1. Proxy Server Exposure
-The proxy server can access any URL it's configured to proxy. In production:
+The proxy server can access public HTTP(S) URLs by default. In production:
 - Run proxy server behind authentication
 - Use URL whitelisting
 - Monitor proxy usage
+- Keep `allowPrivateAddresses: false`; enabling it disables the built-in
+  destination safety policy and should be limited to a trusted network
 
 ### 2. Local File Access
 In Tauri/Electron, the library can access local files. Ensure:
@@ -104,8 +121,7 @@ In Tauri/Electron, the library can access local files. Ensure:
 - Sanitize file paths
 
 ### 3. CORS Bypass
-The library intentionally bypasses CORS. Use responsibly:
+The library intentionally provides a local CORS bridge. Use responsibly:
 - Only proxy trusted sources
 - Implement content validation
 - Monitor for abuse
-

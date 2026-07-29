@@ -7,11 +7,11 @@ var DAPReactDemo = (() => {
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __commonJS = (cb, mod) => function __require() {
-    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-  };
-  var __export = (target, all) => {
-    for (var name in all)
-      __defProp(target, name, { get: all[name], enumerable: true });
+    try {
+      return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    } catch (e) {
+      throw mod = 0, e;
+    }
   };
   var __copyProps = (to, from, except, desc) => {
     if (from && typeof from === "object" || typeof from === "function") {
@@ -29,7 +29,6 @@ var DAPReactDemo = (() => {
     isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
     mod
   ));
-  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
   // node_modules/react/cjs/react.development.js
   var require_react_development = __commonJS({
@@ -21456,12 +21455,6 @@ var DAPReactDemo = (() => {
   });
 
   // demo/react-example-entry.tsx
-  var react_example_entry_exports = {};
-  __export(react_example_entry_exports, {
-    AdvancedVideoPlayer: () => AdvancedVideoPlayer,
-    BasicVideoPlayer: () => BasicVideoPlayer,
-    VideoPlayerDemo: () => VideoPlayerDemo
-  });
   var import_react2 = __toESM(require_react(), 1);
   var import_client2 = __toESM(require_client(), 1);
 
@@ -21488,7 +21481,11 @@ var DAPReactDemo = (() => {
         timestamp: Date.now(),
         data
       };
-      this.options.onEvent(event);
+      try {
+        this.options.onEvent(event);
+      } catch (e) {
+        console.warn("[AudioProxyTelemetry] Event callback failed");
+      }
     }
     startPerformanceTracking(label) {
       if (!this.options.enabled || !this.options.trackPerformance) return;
@@ -21497,7 +21494,7 @@ var DAPReactDemo = (() => {
     endPerformanceTracking(label, additionalData) {
       if (!this.options.enabled || !this.options.trackPerformance) return null;
       const startTime = this.performanceMarks.get(label);
-      if (!startTime) return null;
+      if (startTime === void 0) return null;
       const duration = Date.now() - startTime;
       this.performanceMarks.delete(label);
       this.trackEvent("performance", {
@@ -21522,8 +21519,43 @@ var DAPReactDemo = (() => {
   var DEFAULT_RETRY_ATTEMPTS = 3;
   var DEFAULT_RETRY_DELAY_MS = 1e3;
   var PROXY_HEALTH_TIMEOUT_MS = 5e3;
-  var AUTO_START_WAIT_MS = 500;
+  var SERVER_PACKAGE_ENTRY = "desktop-audio-proxy/server";
   var WINDOWS_PATH_REGEX = /^[a-zA-Z]:\\/;
+  var WINDOWS_UNC_PATH_REGEX = /^\\\\[^\\]+\\/;
+  function normalizeProxyUrl(proxyUrl) {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(proxyUrl);
+    } catch (e) {
+      throw new TypeError("proxyUrl must be an absolute HTTP URL");
+    }
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      throw new TypeError("proxyUrl must use the http or https protocol");
+    }
+    if (parsedUrl.username || parsedUrl.password) {
+      throw new TypeError("proxyUrl must not contain credentials");
+    }
+    if (parsedUrl.pathname && parsedUrl.pathname !== "/" || parsedUrl.search || parsedUrl.hash) {
+      throw new TypeError("proxyUrl must contain only an origin");
+    }
+    return parsedUrl.origin;
+  }
+  function sanitizeUrlForDiagnostics(url) {
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        return `[${parsedUrl.protocol.slice(0, -1) || "local"} URL]`;
+      }
+      parsedUrl.username = "";
+      parsedUrl.password = "";
+      parsedUrl.hash = "";
+      parsedUrl.search = "";
+      parsedUrl.pathname = parsedUrl.pathname === "/" ? "/" : "/[redacted-path]";
+      return parsedUrl.toString();
+    } catch (e) {
+      return "[local or invalid URL]";
+    }
+  }
   var AudioProxyClient = class {
     /**
      * Creates a new AudioProxyClient instance.
@@ -21531,18 +21563,27 @@ var DAPReactDemo = (() => {
      */
     constructor(options = {}) {
       this.autoStartedServer = null;
-      var _a, _b, _c;
+      this.autoStartPromise = null;
+      var _a, _b, _c, _d, _e, _f, _g, _h;
+      const retryAttempts = (_a = options.retryAttempts) != null ? _a : DEFAULT_RETRY_ATTEMPTS;
+      const retryDelay = (_b = options.retryDelay) != null ? _b : DEFAULT_RETRY_DELAY_MS;
+      if (!Number.isInteger(retryAttempts) || retryAttempts < 1) {
+        throw new RangeError("retryAttempts must be a positive integer");
+      }
+      if (!Number.isFinite(retryDelay) || retryDelay < 0) {
+        throw new RangeError("retryDelay must be a non-negative number");
+      }
       this.options = {
-        proxyUrl: options.proxyUrl || DEFAULT_PROXY_URL,
-        autoDetect: (_a = options.autoDetect) != null ? _a : true,
-        fallbackToOriginal: (_b = options.fallbackToOriginal) != null ? _b : true,
-        retryAttempts: options.retryAttempts || DEFAULT_RETRY_ATTEMPTS,
-        retryDelay: options.retryDelay || DEFAULT_RETRY_DELAY_MS,
-        autoStartProxy: (_c = options.autoStartProxy) != null ? _c : false,
-        proxyServerConfig: options.proxyServerConfig || {},
-        telemetry: options.telemetry || { enabled: false }
+        proxyUrl: normalizeProxyUrl((_c = options.proxyUrl) != null ? _c : DEFAULT_PROXY_URL),
+        autoDetect: (_d = options.autoDetect) != null ? _d : true,
+        fallbackToOriginal: (_e = options.fallbackToOriginal) != null ? _e : true,
+        retryAttempts,
+        retryDelay,
+        autoStartProxy: (_f = options.autoStartProxy) != null ? _f : false,
+        proxyServerConfig: (_g = options.proxyServerConfig) != null ? _g : {},
+        telemetry: (_h = options.telemetry) != null ? _h : { enabled: false }
       };
-      this.environment = this.detectEnvironment();
+      this.environment = this.options.autoDetect ? this.detectEnvironment() : "unknown";
       this.telemetry = new TelemetryManager(this.options.telemetry);
     }
     detectEnvironment() {
@@ -21564,6 +21605,21 @@ var DAPReactDemo = (() => {
       return this.options.proxyUrl;
     }
     async startProxyServer() {
+      if (this.autoStartPromise) {
+        return this.autoStartPromise;
+      }
+      const startOperation = this.startProxyServerInternal();
+      this.autoStartPromise = startOperation;
+      try {
+        return await startOperation;
+      } finally {
+        if (this.autoStartPromise === startOperation) {
+          this.autoStartPromise = null;
+        }
+      }
+    }
+    async startProxyServerInternal() {
+      var _a, _b, _c, _d;
       if (typeof window !== "undefined") {
         console.warn(
           "[AudioProxyClient] Cannot auto-start proxy server in browser environment"
@@ -21571,37 +21627,56 @@ var DAPReactDemo = (() => {
         return false;
       }
       try {
-        const dynamicImport = new Function(
-          "modulePath",
-          "return import(modulePath);"
-        );
-        const serverModule = await dynamicImport("./server-impl");
+        const dynamicImport = (modulePath) => import(modulePath);
+        const serverModule = await dynamicImport(SERVER_PACKAGE_ENTRY);
         if (typeof serverModule.startProxyServer !== "function") {
           throw new Error("startProxyServer export not found in server module");
         }
         const startProxyServer = serverModule.startProxyServer;
         const url = new URL(this.options.proxyUrl);
-        const port = Number.parseInt(url.port, 10) || 3002;
+        if (url.protocol !== "http:") {
+          throw new Error("Auto-start requires an http:// proxyUrl");
+        }
+        const port = Number.parseInt(url.port, 10) || 80;
+        const urlHostname = url.hostname.startsWith("[") && url.hostname.endsWith("]") ? url.hostname.slice(1, -1) : url.hostname;
+        const configuredHost = (_a = this.options.proxyServerConfig.host) != null ? _a : urlHostname;
+        const configuredPort = (_b = this.options.proxyServerConfig.port) != null ? _b : port;
         console.log(
-          `[AudioProxyClient] Auto-starting proxy server on port ${port}...`
+          `[AudioProxyClient] Auto-starting proxy server on port ${configuredPort}...`
         );
         this.autoStartedServer = await startProxyServer({
-          port,
-          ...this.options.proxyServerConfig
+          ...this.options.proxyServerConfig,
+          host: configuredHost,
+          port: configuredPort
         });
-        await this.delay(AUTO_START_WAIT_MS);
+        const runtimeProxyUrl = (_d = (_c = this.autoStartedServer).getProxyUrl) == null ? void 0 : _d.call(_c);
+        if (runtimeProxyUrl) {
+          this.options.proxyUrl = normalizeProxyUrl(runtimeProxyUrl);
+        }
         const available = await this.isProxyAvailable();
         if (available) {
           console.log(
             "[AudioProxyClient] Proxy server auto-started successfully"
           );
+          this.telemetry.trackEvent("proxy_start", {
+            proxyUrl: this.options.proxyUrl
+          });
           return true;
         }
+        await this.autoStartedServer.stop();
+        this.autoStartedServer = null;
         return false;
       } catch (error) {
+        if (this.autoStartedServer) {
+          try {
+            await this.autoStartedServer.stop();
+          } catch (e) {
+          }
+          this.autoStartedServer = null;
+        }
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
         console.error(
-          "[AudioProxyClient] Failed to auto-start proxy server:",
-          error,
+          `[AudioProxyClient] Failed to auto-start proxy server: ${errorMessage}`,
           "\nCommon causes: 1) Port already in use 2) Insufficient permissions 3) Not running in Node.js"
         );
         return false;
@@ -21622,9 +21697,12 @@ var DAPReactDemo = (() => {
         });
         if (response.ok) {
           const data = await response.json();
-          console.log("[AudioProxyClient] Proxy server available:", data);
-          this.trackProxyCheck(true);
-          return true;
+          const isAudioProxy = data !== null && typeof data === "object" && data.status === "ok";
+          if (isAudioProxy) {
+            console.log("[AudioProxyClient] Proxy server available");
+            this.trackProxyCheck(true);
+            return true;
+          }
         }
         this.trackProxyCheck(false);
         return false;
@@ -21657,7 +21735,8 @@ var DAPReactDemo = (() => {
      * @returns Promise resolving to stream information including playability
      */
     async canPlayUrl(url) {
-      console.log("[AudioProxyClient] Processing URL:", url);
+      this.validateMediaUrl(url);
+      console.log("[AudioProxyClient] Processing media URL");
       if (this.isLocalFile(url)) {
         console.log("[AudioProxyClient] Using local file handler");
         return {
@@ -21686,13 +21765,13 @@ var DAPReactDemo = (() => {
               acceptRanges: data.acceptRanges,
               lastModified: data.lastModified
             };
-            console.log("[AudioProxyClient] Stream info:", streamInfo2);
+            console.log("[AudioProxyClient] Stream info received");
             return streamInfo2;
           }
         } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown error";
           console.warn(
-            "[AudioProxyClient] Failed to get stream info via proxy:",
-            error
+            `[AudioProxyClient] Failed to get stream info via proxy: ${errorMessage}`
           );
         }
       }
@@ -21703,7 +21782,7 @@ var DAPReactDemo = (() => {
         canPlay: false,
         requiresProxy: true
       };
-      console.log("[AudioProxyClient] Stream info:", streamInfo);
+      console.log("[AudioProxyClient] Stream info unavailable");
       return streamInfo;
     }
     /**
@@ -21721,97 +21800,104 @@ var DAPReactDemo = (() => {
      * ```
      */
     async getPlayableUrl(url) {
-      console.log("[AudioProxyClient] Processing URL:", url);
+      this.validateMediaUrl(url);
+      console.log("[AudioProxyClient] Processing media URL");
       this.telemetry.startPerformanceTracking("url_conversion");
       if (this.isLocalFile(url)) {
         console.log("[AudioProxyClient] Using local file handler");
         const result = this.handleLocalFile(url);
         this.telemetry.endPerformanceTracking("url_conversion", {
-          url,
+          url: sanitizeUrlForDiagnostics(url),
           type: "local_file"
         });
         this.telemetry.trackEvent("url_conversion", {
-          url,
-          result,
+          url: sanitizeUrlForDiagnostics(url),
+          result: sanitizeUrlForDiagnostics(result),
           type: "local_file",
           success: true
         });
         return result;
       }
-      const streamInfo = await this.canPlayUrl(url);
-      if (streamInfo.requiresProxy) {
-        console.log(
-          "[AudioProxyClient] Proxy required, checking availability..."
-        );
-        for (let attempt = 1; attempt <= this.options.retryAttempts; attempt++) {
-          let proxyAvailable = await this.isProxyAvailable();
-          if (!proxyAvailable && this.options.autoStartProxy && !this.autoStartedServer) {
-            console.log(
-              "[AudioProxyClient] Attempting to auto-start proxy server..."
-            );
-            proxyAvailable = await this.startProxyServer();
-          }
-          if (proxyAvailable) {
-            const result = `${this.options.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
-            console.log("[AudioProxyClient] Generated proxy URL:", result);
-            this.telemetry.endPerformanceTracking("url_conversion", {
-              url,
-              type: "proxy",
-              attempt
-            });
-            this.telemetry.trackEvent("url_conversion", {
-              url,
-              result,
-              type: "proxy",
-              success: true,
-              attempt
-            });
-            return result;
-          }
-          if (attempt < this.options.retryAttempts) {
-            console.log(
-              `[AudioProxyClient] Proxy not available on attempt ${attempt}`
-            );
-            await this.delay(this.options.retryDelay);
-          }
-        }
-        if (this.options.fallbackToOriginal) {
+      console.log("[AudioProxyClient] Proxy required, checking availability...");
+      for (let attempt = 1; attempt <= this.options.retryAttempts; attempt++) {
+        let proxyAvailable = await this.isProxyAvailable();
+        if (!proxyAvailable && this.options.autoStartProxy && !this.autoStartedServer) {
           console.log(
-            "[AudioProxyClient] Falling back to original URL (may have CORS issues)"
+            "[AudioProxyClient] Attempting to auto-start proxy server..."
           );
+          proxyAvailable = await this.startProxyServer();
+        }
+        if (proxyAvailable) {
+          const result = `${this.options.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+          console.log("[AudioProxyClient] Generated proxy URL");
           this.telemetry.endPerformanceTracking("url_conversion", {
-            url,
-            type: "fallback"
+            url: sanitizeUrlForDiagnostics(url),
+            type: "proxy",
+            attempt
           });
           this.telemetry.trackEvent("url_conversion", {
-            url,
-            result: url,
-            type: "fallback",
-            success: true
+            url: sanitizeUrlForDiagnostics(url),
+            result: sanitizeUrlForDiagnostics(result),
+            type: "proxy",
+            success: true,
+            attempt
           });
-          return url;
-        } else {
-          const error = new Error(
-            `Proxy server unavailable at ${this.options.proxyUrl}. Tried ${this.options.retryAttempts} times. Solutions: 1) Start proxy server manually with 'startProxyServer()'. 2) Enable 'autoStartProxy: true' option. 3) Set 'fallbackToOriginal: true' to use direct URLs (may have CORS issues). 4) Check if port ${new URL(this.options.proxyUrl).port} is blocked by firewall.`
+          return result;
+        }
+        if (attempt < this.options.retryAttempts) {
+          console.log(
+            `[AudioProxyClient] Proxy not available on attempt ${attempt}`
           );
-          this.telemetry.trackError(error, "url_conversion");
-          throw error;
+          await this.delay(this.options.retryDelay);
         }
       }
-      this.telemetry.endPerformanceTracking("url_conversion", {
-        url,
-        type: "direct"
-      });
-      this.telemetry.trackEvent("url_conversion", {
-        url,
-        result: url,
-        type: "direct",
-        success: true
-      });
-      return url;
+      if (this.options.fallbackToOriginal) {
+        console.log(
+          "[AudioProxyClient] Falling back to original URL (may have CORS issues)"
+        );
+        this.telemetry.endPerformanceTracking("url_conversion", {
+          url: sanitizeUrlForDiagnostics(url),
+          type: "fallback"
+        });
+        this.telemetry.trackEvent("url_conversion", {
+          url: sanitizeUrlForDiagnostics(url),
+          result: sanitizeUrlForDiagnostics(url),
+          type: "fallback",
+          success: true
+        });
+        return url;
+      }
+      const proxyPort = new URL(this.options.proxyUrl).port || "80";
+      const error = new Error(
+        `Proxy server unavailable at ${this.options.proxyUrl}. Tried ${this.options.retryAttempts} times. Solutions: 1) Start proxy server manually with 'startProxyServer()'. 2) Enable 'autoStartProxy: true' option. 3) Set 'fallbackToOriginal: true' to use direct URLs (may have CORS issues). 4) Check if port ${proxyPort} is blocked by firewall.`
+      );
+      this.telemetry.trackError(error, "url_conversion");
+      throw error;
     }
     isLocalFile(url) {
-      return url.startsWith("/") || url.startsWith("./") || url.startsWith("../") || url.startsWith("file://") || url.startsWith("blob:") || url.startsWith("data:") || WINDOWS_PATH_REGEX.test(url);
+      return url.startsWith("/") && !url.startsWith("//") || url.startsWith("./") || url.startsWith("../") || url.startsWith("file://") || url.startsWith("blob:") || url.startsWith("data:") || WINDOWS_PATH_REGEX.test(url) || WINDOWS_UNC_PATH_REGEX.test(url);
+    }
+    validateMediaUrl(url) {
+      if (!url.trim()) {
+        throw new TypeError("Media URL must not be empty");
+      }
+      if (this.isLocalFile(url)) {
+        return;
+      }
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(url);
+      } catch (e) {
+        throw new TypeError(
+          "Media URL must be an absolute HTTP URL or a supported local path"
+        );
+      }
+      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        throw new TypeError("Remote media URLs must use http or https");
+      }
+      if (parsedUrl.username || parsedUrl.password) {
+        throw new TypeError("Media URLs must not contain credentials");
+      }
     }
     handleLocalFile(url) {
       var _a;
@@ -21841,7 +21927,7 @@ var DAPReactDemo = (() => {
     }
     /**
      * Stops the auto-started proxy server if it was started by this client.
-     * Automatically called on process exit, but can be called manually for cleanup.
+     * Call this during application shutdown to release the listening socket.
      *
      * @example
      * ```typescript
@@ -21849,14 +21935,24 @@ var DAPReactDemo = (() => {
      * ```
      */
     async stopProxyServer() {
-      if (this.autoStartedServer) {
+      if (this.autoStartPromise) {
+        await this.autoStartPromise;
+      }
+      const server = this.autoStartedServer;
+      this.autoStartedServer = null;
+      if (server) {
         try {
           console.log("[AudioProxyClient] Stopping auto-started proxy server...");
-          await this.autoStartedServer.stop();
-          this.autoStartedServer = null;
+          await server.stop();
+          this.telemetry.trackEvent("proxy_stop", {
+            proxyUrl: this.options.proxyUrl
+          });
           console.log("[AudioProxyClient] Proxy server stopped successfully");
         } catch (error) {
-          console.error("[AudioProxyClient] Failed to stop proxy server:", error);
+          const errorMessage = error instanceof Error ? error.message : "Unknown error";
+          console.error(
+            `[AudioProxyClient] Failed to stop proxy server: ${errorMessage}`
+          );
         }
       }
     }
@@ -21876,34 +21972,59 @@ var DAPReactDemo = (() => {
   function getErrorMessage(error) {
     return error instanceof Error ? error.message : "Unknown error";
   }
+  function getOptionsMemoKey(options) {
+    return JSON.stringify({
+      proxyUrl: options == null ? void 0 : options.proxyUrl,
+      autoDetect: options == null ? void 0 : options.autoDetect,
+      fallbackToOriginal: options == null ? void 0 : options.fallbackToOriginal,
+      retryAttempts: options == null ? void 0 : options.retryAttempts,
+      retryDelay: options == null ? void 0 : options.retryDelay,
+      autoStartProxy: options == null ? void 0 : options.autoStartProxy,
+      proxyServerConfig: options == null ? void 0 : options.proxyServerConfig,
+      telemetry: (options == null ? void 0 : options.telemetry) ? {
+        enabled: options.telemetry.enabled,
+        trackPerformance: options.telemetry.trackPerformance,
+        trackErrors: options.telemetry.trackErrors
+      } : void 0
+    });
+  }
+  function useStableAudioProxyOptions(options) {
+    var _a;
+    const optionsKey = getOptionsMemoKey(options);
+    return (0, import_react.useMemo)(() => options, [optionsKey, (_a = options == null ? void 0 : options.telemetry) == null ? void 0 : _a.onEvent]);
+  }
   function useAudioProxy(url, options) {
     const [audioUrl, setAudioUrl] = (0, import_react.useState)(null);
     const [isLoading, setIsLoading] = (0, import_react.useState)(false);
     const [error, setError] = (0, import_react.useState)(null);
     const [streamInfo, setStreamInfo] = (0, import_react.useState)(null);
-    const optionsJson = JSON.stringify(options != null ? options : {});
-    const stableOptions = (0, import_react.useMemo)(() => {
-      return JSON.parse(optionsJson);
-    }, [optionsJson]);
+    const stableOptions = useStableAudioProxyOptions(options);
     const client = (0, import_react.useMemo)(
       () => new AudioProxyClient(stableOptions),
       [stableOptions]
     );
+    const requestGeneration = (0, import_react.useRef)(0);
     const processUrl = (0, import_react.useCallback)(
       async (inputUrl) => {
+        const requestId = ++requestGeneration.current;
         setIsLoading(true);
         setError(null);
         setAudioUrl(null);
         setStreamInfo(null);
         try {
           const info = await client.canPlayUrl(inputUrl);
+          if (requestId !== requestGeneration.current) return;
           setStreamInfo(info);
           const playableUrl = await client.getPlayableUrl(inputUrl);
+          if (requestId !== requestGeneration.current) return;
           setAudioUrl(playableUrl);
         } catch (err) {
+          if (requestId !== requestGeneration.current) return;
           setError(getErrorMessage(err));
         } finally {
-          setIsLoading(false);
+          if (requestId === requestGeneration.current) {
+            setIsLoading(false);
+          }
         }
       },
       [client]
@@ -21912,12 +22033,22 @@ var DAPReactDemo = (() => {
       if (url) {
         processUrl(url);
       } else {
+        requestGeneration.current += 1;
         setAudioUrl(null);
         setStreamInfo(null);
         setError(null);
         setIsLoading(false);
       }
+      return () => {
+        requestGeneration.current += 1;
+      };
     }, [url, processUrl]);
+    (0, import_react.useEffect)(
+      () => () => {
+        void client.stopProxyServer();
+      },
+      [client]
+    );
     const retry = (0, import_react.useCallback)(() => {
       if (url) {
         processUrl(url);
@@ -21930,6 +22061,50 @@ var DAPReactDemo = (() => {
       streamInfo,
       retry,
       client
+    };
+  }
+  function useProxyStatus(options) {
+    const [isAvailable, setIsAvailable] = (0, import_react.useState)(null);
+    const [isChecking, setIsChecking] = (0, import_react.useState)(false);
+    const [error, setError] = (0, import_react.useState)(null);
+    const [proxyUrl, setProxyUrl] = (0, import_react.useState)("");
+    const stableOptions = useStableAudioProxyOptions(options);
+    const client = (0, import_react.useMemo)(
+      () => new AudioProxyClient(stableOptions),
+      [stableOptions]
+    );
+    const requestGeneration = (0, import_react.useRef)(0);
+    const checkProxy = (0, import_react.useCallback)(async () => {
+      const requestId = ++requestGeneration.current;
+      setIsChecking(true);
+      setError(null);
+      try {
+        const available = await client.isProxyAvailable();
+        if (requestId !== requestGeneration.current) return;
+        setIsAvailable(available);
+        setProxyUrl(client.getProxyUrl());
+      } catch (err) {
+        if (requestId !== requestGeneration.current) return;
+        setError(getErrorMessage(err));
+        setIsAvailable(false);
+      } finally {
+        if (requestId === requestGeneration.current) {
+          setIsChecking(false);
+        }
+      }
+    }, [client]);
+    (0, import_react.useEffect)(() => {
+      checkProxy();
+      return () => {
+        requestGeneration.current += 1;
+      };
+    }, [checkProxy]);
+    return {
+      isAvailable,
+      isChecking,
+      error,
+      proxyUrl,
+      refresh: checkProxy
     };
   }
   var AudioProxyContext = (0, import_react.createContext)(null);
@@ -21946,113 +22121,51 @@ var DAPReactDemo = (() => {
   }
 
   // demo/react-example-entry.tsx
-  function BasicVideoPlayer({ videoUrl }) {
-    const { playableUrl, loading, error } = useAudioUrl(videoUrl, {
-      autoStartProxy: true,
-      fallbackToOriginal: true
-    });
-    if (loading) return import_react2.default.createElement("div", { style: { padding: 20, textAlign: "center" } }, "Loading video...");
-    if (error) return import_react2.default.createElement("div", { style: { padding: 20, color: "red" } }, import_react2.default.createElement("strong", null, "Error loading video:"), import_react2.default.createElement("div", null, error.message));
-    return import_react2.default.createElement("video", { src: playableUrl, controls: true, style: { width: "100%", maxWidth: "800px" } }, "Your browser does not support the video tag.");
-  }
-  function AdvancedVideoPlayer({ videoUrl }) {
-    const videoRef = import_react2.default.useRef(null);
-    const [isPlaying, setIsPlaying] = import_react2.default.useState(false);
-    const [currentTime, setCurrentTime] = import_react2.default.useState(0);
-    const [duration, setDuration] = import_react2.default.useState(0);
-    const [volume, setVolume] = import_react2.default.useState(1);
-    const { playableUrl, loading, error, streamInfo } = useAudioUrl(videoUrl, {
-      autoStartProxy: true,
-      retryAttempts: 3,
-      retryDelay: 1e3
-    });
-    import_react2.default.useEffect(() => {
-      const video = videoRef.current;
-      if (!video) return;
-      const handleTimeUpdate = () => setCurrentTime(video.currentTime);
-      const handleDurationChange = () => setDuration(video.duration || 0);
-      const handlePlay = () => setIsPlaying(true);
-      const handlePause = () => setIsPlaying(false);
-      video.addEventListener("timeupdate", handleTimeUpdate);
-      video.addEventListener("durationchange", handleDurationChange);
-      video.addEventListener("play", handlePlay);
-      video.addEventListener("pause", handlePause);
-      return () => {
-        video.removeEventListener("timeupdate", handleTimeUpdate);
-        video.removeEventListener("durationchange", handleDurationChange);
-        video.removeEventListener("play", handlePlay);
-        video.removeEventListener("pause", handlePause);
-      };
-    }, []);
-    const togglePlayPause = () => {
-      if (videoRef.current) {
-        if (isPlaying) videoRef.current.pause();
-        else videoRef.current.play();
-      }
-    };
-    const handleSeek = (e) => {
-      const time = parseFloat(e.target.value);
-      if (videoRef.current) {
-        videoRef.current.currentTime = time;
-        setCurrentTime(time);
-      }
-    };
-    const handleVolumeChange = (e) => {
-      const vol = parseFloat(e.target.value);
-      setVolume(vol);
-      if (videoRef.current) videoRef.current.volume = vol;
-    };
-    const formatTime = (seconds) => {
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${mins}:${secs.toString().padStart(2, "0")}`;
-    };
-    if (loading) return import_react2.default.createElement("div", null, "Loading video...");
-    if (error) return import_react2.default.createElement("div", { style: { color: "crimson" } }, "Error: " + error.message);
-    return import_react2.default.createElement(
-      "div",
-      null,
-      import_react2.default.createElement("div", null, import_react2.default.createElement("video", { ref: videoRef, src: playableUrl, controls: true, style: { width: "100%", background: "#000" } })),
-      import_react2.default.createElement(
-        "div",
-        { style: { marginTop: 8, display: "flex", gap: 8, alignItems: "center" } },
-        import_react2.default.createElement("button", { onClick: togglePlayPause }, isPlaying ? "Pause" : "Play"),
-        import_react2.default.createElement("div", null, `${formatTime(currentTime)} / ${formatTime(duration)}`),
-        import_react2.default.createElement("input", { type: "range", min: 0, max: duration || 0, value: currentTime, onChange: handleSeek, style: { flex: 1 } }),
-        import_react2.default.createElement("input", { type: "range", min: 0, max: 1, step: 0.01, value: volume, onChange: handleVolumeChange })
-      ),
-      streamInfo && import_react2.default.createElement("div", { style: { marginTop: 8 } }, import_react2.default.createElement("div", null, "Content Type: " + streamInfo.contentType))
+  var STATIONS = [
+    {
+      name: "Groove Salad",
+      description: "Ambient and downtempo",
+      url: "https://ice1.somafm.com/groovesalad-128-mp3"
+    },
+    {
+      name: "Drone Zone",
+      description: "Atmospheric textures",
+      url: "https://ice2.somafm.com/dronezone-128-mp3"
+    }
+  ];
+  function RadioPlayerDemo() {
+    var _a, _b;
+    const options = (0, import_react2.useMemo)(
+      () => ({
+        proxyUrl: "http://localhost:3002",
+        autoDetect: false,
+        autoStartProxy: false,
+        fallbackToOriginal: false,
+        retryAttempts: 2
+      }),
+      []
     );
-  }
-  function VideoPlayerDemo() {
-    const sampleVideos = [
-      { title: "Big Buck Bunny", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" },
-      { title: "Elephant Dream", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4" },
-      { title: "For Bigger Blazes", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" }
-    ];
-    const [currentIndex, setCurrentIndex] = import_react2.default.useState(0);
-    const current = sampleVideos[currentIndex];
-    return import_react2.default.createElement(
-      "div",
-      null,
-      import_react2.default.createElement("h2", null, current.title),
-      import_react2.default.createElement(AdvancedVideoPlayer, { videoUrl: current.url }),
-      import_react2.default.createElement(
-        "div",
-        { style: { marginTop: 8 } },
-        import_react2.default.createElement("button", { onClick: () => setCurrentIndex((i) => (i - 1 + sampleVideos.length) % sampleVideos.length) }, "Previous"),
-        import_react2.default.createElement("span", { style: { margin: "0 8px" } }, `${currentIndex + 1} / ${sampleVideos.length}`),
-        import_react2.default.createElement("button", { onClick: () => setCurrentIndex((i) => (i + 1) % sampleVideos.length) }, "Next")
-      )
+    const [stationUrl, setStationUrl] = (0, import_react2.useState)(null);
+    const { playableUrl, loading, error, streamInfo, retry } = useAudioUrl(
+      stationUrl,
+      options
     );
+    const { isAvailable, isChecking, refresh } = useProxyStatus(options);
+    return /* @__PURE__ */ import_react2.default.createElement("main", { className: "react-radio" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "react-status" }, /* @__PURE__ */ import_react2.default.createElement("span", null, "React hook consumer"), /* @__PURE__ */ import_react2.default.createElement("strong", null, isChecking ? "Checking proxy\u2026" : isAvailable ? "Proxy ready" : "Proxy offline"), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: refresh }, "Refresh")), /* @__PURE__ */ import_react2.default.createElement("div", { className: "station-grid" }, STATIONS.map((station) => /* @__PURE__ */ import_react2.default.createElement(
+      "button",
+      {
+        key: station.url,
+        className: stationUrl === station.url ? "selected" : "",
+        type: "button",
+        onClick: () => setStationUrl(station.url)
+      },
+      /* @__PURE__ */ import_react2.default.createElement("span", null, station.name),
+      /* @__PURE__ */ import_react2.default.createElement("small", null, station.description)
+    ))), /* @__PURE__ */ import_react2.default.createElement("section", { className: "player-panel" }, loading && /* @__PURE__ */ import_react2.default.createElement("p", { role: "status" }, "Preparing secure proxy URL\u2026"), error && /* @__PURE__ */ import_react2.default.createElement("p", { role: "alert" }, error.message, " ", /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: retry }, "Retry")), !loading && !error && !playableUrl && /* @__PURE__ */ import_react2.default.createElement("p", null, "Choose a station to prepare playback."), playableUrl && /* @__PURE__ */ import_react2.default.createElement("audio", { src: playableUrl, controls: true }), streamInfo && /* @__PURE__ */ import_react2.default.createElement("dl", null, /* @__PURE__ */ import_react2.default.createElement("div", null, /* @__PURE__ */ import_react2.default.createElement("dt", null, "HTTP"), /* @__PURE__ */ import_react2.default.createElement("dd", null, streamInfo.status)), /* @__PURE__ */ import_react2.default.createElement("div", null, /* @__PURE__ */ import_react2.default.createElement("dt", null, "Media"), /* @__PURE__ */ import_react2.default.createElement("dd", null, (_a = streamInfo.contentType) != null ? _a : "unknown")), /* @__PURE__ */ import_react2.default.createElement("div", null, /* @__PURE__ */ import_react2.default.createElement("dt", null, "Range"), /* @__PURE__ */ import_react2.default.createElement("dd", null, (_b = streamInfo.acceptRanges) != null ? _b : "not advertised")))));
   }
-  document.addEventListener("DOMContentLoaded", () => {
-    const rootEl = document.getElementById("root");
-    if (!rootEl) return;
-    const root = import_client2.default.createRoot(rootEl);
-    root.render(import_react2.default.createElement(VideoPlayerDemo));
-  });
-  return __toCommonJS(react_example_entry_exports);
+  var rootElement = document.getElementById("root");
+  if (!rootElement) throw new Error("React demo root was not found");
+  import_client2.default.createRoot(rootElement).render(/* @__PURE__ */ import_react2.default.createElement(RadioPlayerDemo, null));
 })();
 /*! Bundled license information:
 

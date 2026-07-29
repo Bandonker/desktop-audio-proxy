@@ -1,21 +1,72 @@
-import { AudioProxyOptions, StreamInfo, Environment } from './types';
+import {
+  AudioProxyOptions,
+  StreamInfo,
+  Environment,
+  ProxyConfig,
+} from './types';
 import { TelemetryManager } from './telemetry';
 
 const DEFAULT_PROXY_URL = 'http://localhost:3002';
 const DEFAULT_RETRY_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY_MS = 1000;
 const PROXY_HEALTH_TIMEOUT_MS = 5000;
-const AUTO_START_WAIT_MS = 500;
+const SERVER_PACKAGE_ENTRY = 'desktop-audio-proxy/server';
 
 interface AutoStartedProxyServer {
   stop: () => Promise<void>;
+  getProxyUrl?: () => string;
 }
 
 type StartProxyServerFn = (
-  config?: Record<string, unknown>
+  config?: ProxyConfig
 ) => Promise<AutoStartedProxyServer>;
 
 const WINDOWS_PATH_REGEX = /^[a-zA-Z]:\\/;
+const WINDOWS_UNC_PATH_REGEX = /^\\\\[^\\]+\\/;
+
+function normalizeProxyUrl(proxyUrl: string): string {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(proxyUrl);
+  } catch {
+    throw new TypeError('proxyUrl must be an absolute HTTP URL');
+  }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    throw new TypeError('proxyUrl must use the http or https protocol');
+  }
+
+  if (parsedUrl.username || parsedUrl.password) {
+    throw new TypeError('proxyUrl must not contain credentials');
+  }
+
+  if (
+    (parsedUrl.pathname && parsedUrl.pathname !== '/') ||
+    parsedUrl.search ||
+    parsedUrl.hash
+  ) {
+    throw new TypeError('proxyUrl must contain only an origin');
+  }
+
+  return parsedUrl.origin;
+}
+
+function sanitizeUrlForDiagnostics(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return `[${parsedUrl.protocol.slice(0, -1) || 'local'} URL]`;
+    }
+    parsedUrl.username = '';
+    parsedUrl.password = '';
+    parsedUrl.hash = '';
+    parsedUrl.search = '';
+    parsedUrl.pathname = parsedUrl.pathname === '/' ? '/' : '/[redacted-path]';
+    return parsedUrl.toString();
+  } catch {
+    return '[local or invalid URL]';
+  }
+}
 
 // Type declarations for window objects
 declare global {
@@ -70,6 +121,7 @@ export class AudioProxyClient {
   private options: Required<AudioProxyOptions>;
   private environment: Environment;
   private autoStartedServer: AutoStartedProxyServer | null = null;
+  private autoStartPromise: Promise<boolean> | null = null;
   private telemetry: TelemetryManager;
 
   /**
@@ -77,18 +129,30 @@ export class AudioProxyClient {
    * @param options - Configuration options for the client
    */
   constructor(options: AudioProxyOptions = {}) {
+    const retryAttempts = options.retryAttempts ?? DEFAULT_RETRY_ATTEMPTS;
+    const retryDelay = options.retryDelay ?? DEFAULT_RETRY_DELAY_MS;
+
+    if (!Number.isInteger(retryAttempts) || retryAttempts < 1) {
+      throw new RangeError('retryAttempts must be a positive integer');
+    }
+    if (!Number.isFinite(retryDelay) || retryDelay < 0) {
+      throw new RangeError('retryDelay must be a non-negative number');
+    }
+
     this.options = {
-      proxyUrl: options.proxyUrl || DEFAULT_PROXY_URL,
+      proxyUrl: normalizeProxyUrl(options.proxyUrl ?? DEFAULT_PROXY_URL),
       autoDetect: options.autoDetect ?? true,
       fallbackToOriginal: options.fallbackToOriginal ?? true,
-      retryAttempts: options.retryAttempts || DEFAULT_RETRY_ATTEMPTS,
-      retryDelay: options.retryDelay || DEFAULT_RETRY_DELAY_MS,
+      retryAttempts,
+      retryDelay,
       autoStartProxy: options.autoStartProxy ?? false,
-      proxyServerConfig: options.proxyServerConfig || {},
-      telemetry: options.telemetry || { enabled: false },
+      proxyServerConfig: options.proxyServerConfig ?? {},
+      telemetry: options.telemetry ?? { enabled: false },
     };
 
-    this.environment = this.detectEnvironment();
+    this.environment = this.options.autoDetect
+      ? this.detectEnvironment()
+      : 'unknown';
     this.telemetry = new TelemetryManager(this.options.telemetry);
   }
 
@@ -123,6 +187,23 @@ export class AudioProxyClient {
   }
 
   private async startProxyServer(): Promise<boolean> {
+    if (this.autoStartPromise) {
+      return this.autoStartPromise;
+    }
+
+    const startOperation = this.startProxyServerInternal();
+    this.autoStartPromise = startOperation;
+
+    try {
+      return await startOperation;
+    } finally {
+      if (this.autoStartPromise === startOperation) {
+        this.autoStartPromise = null;
+      }
+    }
+  }
+
+  private async startProxyServerInternal(): Promise<boolean> {
     // Only works in Node.js environment
     if (typeof window !== 'undefined') {
       console.warn(
@@ -132,15 +213,14 @@ export class AudioProxyClient {
     }
 
     try {
-      // Use indirect dynamic import so browser-targeted bundles don't pull in
-      // Node-only server dependencies (express/cors/net).
-      const dynamicImport = new Function(
-        'modulePath',
-        'return import(modulePath);'
-      ) as (modulePath: string) => Promise<{
-        startProxyServer?: StartProxyServerFn;
-      }>;
-      const serverModule = await dynamicImport('./server-impl');
+      // Keep the module path indirect so browser-targeted bundles do not pull in
+      // Node-only server dependencies. Package self-resolution works from both
+      // the ESM and CommonJS main builds.
+      const dynamicImport = (modulePath: string) =>
+        import(modulePath) as Promise<{
+          startProxyServer?: StartProxyServerFn;
+        }>;
+      const serverModule = await dynamicImport(SERVER_PACKAGE_ENTRY);
 
       if (typeof serverModule.startProxyServer !== 'function') {
         throw new Error('startProxyServer export not found in server module');
@@ -148,33 +228,59 @@ export class AudioProxyClient {
       const startProxyServer = serverModule.startProxyServer;
 
       const url = new URL(this.options.proxyUrl);
-      const port = Number.parseInt(url.port, 10) || 3002;
+      if (url.protocol !== 'http:') {
+        throw new Error('Auto-start requires an http:// proxyUrl');
+      }
+      const port = Number.parseInt(url.port, 10) || 80;
+      const urlHostname =
+        url.hostname.startsWith('[') && url.hostname.endsWith(']')
+          ? url.hostname.slice(1, -1)
+          : url.hostname;
+      const configuredHost = this.options.proxyServerConfig.host ?? urlHostname;
+      const configuredPort = this.options.proxyServerConfig.port ?? port;
 
       console.log(
-        `[AudioProxyClient] Auto-starting proxy server on port ${port}...`
+        `[AudioProxyClient] Auto-starting proxy server on port ${configuredPort}...`
       );
 
       this.autoStartedServer = await startProxyServer({
-        port,
         ...this.options.proxyServerConfig,
+        host: configuredHost,
+        port: configuredPort,
       });
 
-      // Wait a bit for server to fully start
-      await this.delay(AUTO_START_WAIT_MS);
+      const runtimeProxyUrl = this.autoStartedServer.getProxyUrl?.();
+      if (runtimeProxyUrl) {
+        this.options.proxyUrl = normalizeProxyUrl(runtimeProxyUrl);
+      }
 
       const available = await this.isProxyAvailable();
       if (available) {
         console.log(
           '[AudioProxyClient] Proxy server auto-started successfully'
         );
+        this.telemetry.trackEvent('proxy_start', {
+          proxyUrl: this.options.proxyUrl,
+        });
         return true;
       }
 
+      await this.autoStartedServer.stop();
+      this.autoStartedServer = null;
       return false;
     } catch (error) {
+      if (this.autoStartedServer) {
+        try {
+          await this.autoStartedServer.stop();
+        } catch {
+          // The original startup failure is the actionable error.
+        }
+        this.autoStartedServer = null;
+      }
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       console.error(
-        '[AudioProxyClient] Failed to auto-start proxy server:',
-        error,
+        `[AudioProxyClient] Failed to auto-start proxy server: ${errorMessage}`,
         '\nCommon causes: 1) Port already in use 2) Insufficient permissions 3) Not running in Node.js'
       );
       return false;
@@ -198,9 +304,15 @@ export class AudioProxyClient {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('[AudioProxyClient] Proxy server available:', data);
-        this.trackProxyCheck(true);
-        return true;
+        const isAudioProxy =
+          data !== null &&
+          typeof data === 'object' &&
+          (data as { status?: unknown }).status === 'ok';
+        if (isAudioProxy) {
+          console.log('[AudioProxyClient] Proxy server available');
+          this.trackProxyCheck(true);
+          return true;
+        }
       }
       this.trackProxyCheck(false);
       return false;
@@ -236,7 +348,8 @@ export class AudioProxyClient {
    * @returns Promise resolving to stream information including playability
    */
   public async canPlayUrl(url: string): Promise<StreamInfo> {
-    console.log('[AudioProxyClient] Processing URL:', url);
+    this.validateMediaUrl(url);
+    console.log('[AudioProxyClient] Processing media URL');
 
     // Check if it's a local file
     if (this.isLocalFile(url)) {
@@ -271,13 +384,14 @@ export class AudioProxyClient {
             acceptRanges: data.acceptRanges,
             lastModified: data.lastModified,
           };
-          console.log('[AudioProxyClient] Stream info:', streamInfo);
+          console.log('[AudioProxyClient] Stream info received');
           return streamInfo;
         }
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error';
         console.warn(
-          '[AudioProxyClient] Failed to get stream info via proxy:',
-          error
+          `[AudioProxyClient] Failed to get stream info via proxy: ${errorMessage}`
         );
       }
     }
@@ -290,7 +404,7 @@ export class AudioProxyClient {
       canPlay: false,
       requiresProxy: true,
     };
-    console.log('[AudioProxyClient] Stream info:', streamInfo);
+    console.log('[AudioProxyClient] Stream info unavailable');
     return streamInfo;
   }
 
@@ -309,7 +423,8 @@ export class AudioProxyClient {
    * ```
    */
   public async getPlayableUrl(url: string): Promise<string> {
-    console.log('[AudioProxyClient] Processing URL:', url);
+    this.validateMediaUrl(url);
+    console.log('[AudioProxyClient] Processing media URL');
     this.telemetry.startPerformanceTracking('url_conversion');
 
     // Handle local files
@@ -317,121 +432,131 @@ export class AudioProxyClient {
       console.log('[AudioProxyClient] Using local file handler');
       const result = this.handleLocalFile(url);
       this.telemetry.endPerformanceTracking('url_conversion', {
-        url,
+        url: sanitizeUrlForDiagnostics(url),
         type: 'local_file',
       });
       this.telemetry.trackEvent('url_conversion', {
-        url,
-        result,
+        url: sanitizeUrlForDiagnostics(url),
+        result: sanitizeUrlForDiagnostics(result),
         type: 'local_file',
         success: true,
       });
       return result;
     }
 
-    // Check stream info
-    const streamInfo = await this.canPlayUrl(url);
+    console.log('[AudioProxyClient] Proxy required, checking availability...');
 
-    if (streamInfo.requiresProxy) {
-      console.log(
-        '[AudioProxyClient] Proxy required, checking availability...'
-      );
+    // Try proxy with retries
+    for (let attempt = 1; attempt <= this.options.retryAttempts; attempt++) {
+      let proxyAvailable = await this.isProxyAvailable();
 
-      // Try proxy with retries
-      for (let attempt = 1; attempt <= this.options.retryAttempts; attempt++) {
-        let proxyAvailable = await this.isProxyAvailable();
-
-        // If proxy not available and auto-start is enabled, try to start it
-        if (
-          !proxyAvailable &&
-          this.options.autoStartProxy &&
-          !this.autoStartedServer
-        ) {
-          console.log(
-            '[AudioProxyClient] Attempting to auto-start proxy server...'
-          );
-          proxyAvailable = await this.startProxyServer();
-        }
-
-        if (proxyAvailable) {
-          const result = `${this.options.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
-          console.log('[AudioProxyClient] Generated proxy URL:', result);
-          this.telemetry.endPerformanceTracking('url_conversion', {
-            url,
-            type: 'proxy',
-            attempt,
-          });
-          this.telemetry.trackEvent('url_conversion', {
-            url,
-            result,
-            type: 'proxy',
-            success: true,
-            attempt,
-          });
-          return result;
-        }
-
-        if (attempt < this.options.retryAttempts) {
-          console.log(
-            `[AudioProxyClient] Proxy not available on attempt ${attempt}`
-          );
-          await this.delay(this.options.retryDelay);
-        }
+      // If proxy not available and auto-start is enabled, try to start it
+      if (
+        !proxyAvailable &&
+        this.options.autoStartProxy &&
+        !this.autoStartedServer
+      ) {
+        console.log(
+          '[AudioProxyClient] Attempting to auto-start proxy server...'
+        );
+        proxyAvailable = await this.startProxyServer();
       }
 
-      // Proxy failed, fallback if enabled
-      if (this.options.fallbackToOriginal) {
-        console.log(
-          '[AudioProxyClient] Falling back to original URL (may have CORS issues)'
-        );
+      if (proxyAvailable) {
+        const result = `${this.options.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+        console.log('[AudioProxyClient] Generated proxy URL');
         this.telemetry.endPerformanceTracking('url_conversion', {
-          url,
-          type: 'fallback',
+          url: sanitizeUrlForDiagnostics(url),
+          type: 'proxy',
+          attempt,
         });
         this.telemetry.trackEvent('url_conversion', {
-          url,
-          result: url,
-          type: 'fallback',
+          url: sanitizeUrlForDiagnostics(url),
+          result: sanitizeUrlForDiagnostics(result),
+          type: 'proxy',
           success: true,
+          attempt,
         });
-        return url;
-      } else {
-        const error = new Error(
-          `Proxy server unavailable at ${this.options.proxyUrl}. ` +
-            `Tried ${this.options.retryAttempts} times. ` +
-            `Solutions: 1) Start proxy server manually with 'startProxyServer()'. ` +
-            `2) Enable 'autoStartProxy: true' option. ` +
-            `3) Set 'fallbackToOriginal: true' to use direct URLs (may have CORS issues). ` +
-            `4) Check if port ${new URL(this.options.proxyUrl).port} is blocked by firewall.`
+        return result;
+      }
+
+      if (attempt < this.options.retryAttempts) {
+        console.log(
+          `[AudioProxyClient] Proxy not available on attempt ${attempt}`
         );
-        this.telemetry.trackError(error, 'url_conversion');
-        throw error;
+        await this.delay(this.options.retryDelay);
       }
     }
 
-    this.telemetry.endPerformanceTracking('url_conversion', {
-      url,
-      type: 'direct',
-    });
-    this.telemetry.trackEvent('url_conversion', {
-      url,
-      result: url,
-      type: 'direct',
-      success: true,
-    });
-    return url;
+    // Proxy failed, fallback if enabled
+    if (this.options.fallbackToOriginal) {
+      console.log(
+        '[AudioProxyClient] Falling back to original URL (may have CORS issues)'
+      );
+      this.telemetry.endPerformanceTracking('url_conversion', {
+        url: sanitizeUrlForDiagnostics(url),
+        type: 'fallback',
+      });
+      this.telemetry.trackEvent('url_conversion', {
+        url: sanitizeUrlForDiagnostics(url),
+        result: sanitizeUrlForDiagnostics(url),
+        type: 'fallback',
+        success: true,
+      });
+      return url;
+    }
+
+    const proxyPort = new URL(this.options.proxyUrl).port || '80';
+    const error = new Error(
+      `Proxy server unavailable at ${this.options.proxyUrl}. ` +
+        `Tried ${this.options.retryAttempts} times. ` +
+        `Solutions: 1) Start proxy server manually with 'startProxyServer()'. ` +
+        `2) Enable 'autoStartProxy: true' option. ` +
+        `3) Set 'fallbackToOriginal: true' to use direct URLs (may have CORS issues). ` +
+        `4) Check if port ${proxyPort} is blocked by firewall.`
+    );
+    this.telemetry.trackError(error, 'url_conversion');
+    throw error;
   }
 
   private isLocalFile(url: string): boolean {
     return (
-      url.startsWith('/') ||
+      (url.startsWith('/') && !url.startsWith('//')) ||
       url.startsWith('./') ||
       url.startsWith('../') ||
       url.startsWith('file://') ||
       url.startsWith('blob:') ||
       url.startsWith('data:') ||
-      WINDOWS_PATH_REGEX.test(url)
+      WINDOWS_PATH_REGEX.test(url) ||
+      WINDOWS_UNC_PATH_REGEX.test(url)
     ); // Windows path
+  }
+
+  private validateMediaUrl(url: string): void {
+    if (!url.trim()) {
+      throw new TypeError('Media URL must not be empty');
+    }
+
+    if (this.isLocalFile(url)) {
+      return;
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new TypeError(
+        'Media URL must be an absolute HTTP URL or a supported local path'
+      );
+    }
+
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      throw new TypeError('Remote media URLs must use http or https');
+    }
+
+    if (parsedUrl.username || parsedUrl.password) {
+      throw new TypeError('Media URLs must not contain credentials');
+    }
   }
 
   private handleLocalFile(url: string): string {
@@ -478,7 +603,7 @@ export class AudioProxyClient {
 
   /**
    * Stops the auto-started proxy server if it was started by this client.
-   * Automatically called on process exit, but can be called manually for cleanup.
+   * Call this during application shutdown to release the listening socket.
    *
    * @example
    * ```typescript
@@ -486,14 +611,27 @@ export class AudioProxyClient {
    * ```
    */
   public async stopProxyServer(): Promise<void> {
-    if (this.autoStartedServer) {
+    if (this.autoStartPromise) {
+      await this.autoStartPromise;
+    }
+
+    const server = this.autoStartedServer;
+    this.autoStartedServer = null;
+
+    if (server) {
       try {
         console.log('[AudioProxyClient] Stopping auto-started proxy server...');
-        await this.autoStartedServer.stop();
-        this.autoStartedServer = null;
+        await server.stop();
+        this.telemetry.trackEvent('proxy_stop', {
+          proxyUrl: this.options.proxyUrl,
+        });
         console.log('[AudioProxyClient] Proxy server stopped successfully');
       } catch (error) {
-        console.error('[AudioProxyClient] Failed to stop proxy server:', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error';
+        console.error(
+          `[AudioProxyClient] Failed to stop proxy server: ${errorMessage}`
+        );
       }
     }
   }

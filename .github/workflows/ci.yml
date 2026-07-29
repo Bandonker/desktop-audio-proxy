@@ -5,88 +5,143 @@ permissions:
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    
+
     strategy:
       fail-fast: true
       matrix:
-        node-version: [16.x, 18.x, 20.x]
-    
+        node-version: [20.x, 22.x, 24.x]
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-      
-    - name: Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Lint (Node 20 quality gate)
-      if: matrix.node-version == '20.x'
-      run: npm run lint
-      
-    - name: Build project
-      run: npm run build
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
-    - name: Demo route smoke test (Node 20)
-      if: matrix.node-version == '20.x'
-      run: npm run test:demo-smoke
-      
-    - name: Run tests
-      run: npm test -- --runInBand
-      
-    - name: Upload coverage reports
-      if: matrix.node-version == '20.x'
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-reports
-        path: coverage/
-        if-no-files-found: ignore
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (Node 24 quality gate)
+        if: matrix.node-version == '24.x'
+        run: npm run lint
+
+      - name: Build project
+        run: npm run build
+
+      - name: Build React demo (Node 24)
+        if: matrix.node-version == '24.x'
+        run: npm run build:react-demo
+
+      - name: Demo route smoke test (Node 24)
+        if: matrix.node-version == '24.x'
+        run: npm run test:demo-smoke
+
+      - name: Run tests
+        if: matrix.node-version != '24.x'
+        run: npm test -- --runInBand
+
+      - name: Run tests with coverage (Node 24)
+        if: matrix.node-version == '24.x'
+        run: npm run test:coverage -- --runInBand
+
+      - name: Upload coverage reports
+        if: matrix.node-version == '24.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: coverage/
+          if-no-files-found: ignore
 
   build:
     runs-on: ubuntu-latest
     needs: test
     timeout-minutes: 15
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.x'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Lint quality gate
-      run: npm run lint
-      
-    - name: Build all targets
-      run: npm run build
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
 
-    - name: Validate package exports
-      run: npm run verify:exports
-      
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-artifacts
-        path: dist/
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint quality gate
+        run: npm run lint
+
+      - name: Build all targets
+        run: npm run build
+
+      - name: Validate package exports
+        run: npm run verify:exports
+
+      - name: Validate public TypeScript declarations
+        run: npm run verify:types
+
+      - name: Validate examples and documentation
+        run: |
+          npm run verify:examples
+          npm run verify:docs
+
+      - name: Validate package payload
+        run: npm run verify:package
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: dist/
+
+  native-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package and native renderer
+        run: npm run build:native-smoke
+
+      - name: Run Electron host smoke
+        run: node scripts/native-smoke-harness.mjs electron
+
+      - name: Compile Tauri 2 host
+        run: cargo build --manifest-path test/native/tauri/src-tauri/Cargo.toml
+
+      - name: Run Tauri WebView2 host smoke
+        run: node scripts/native-smoke-harness.mjs tauri
+
+      - name: Install Playwright WebKit
+        run: npx playwright install webkit
+
+      - name: Run WebKit engine smoke
+        run: node scripts/webkit-smoke-test.mjs

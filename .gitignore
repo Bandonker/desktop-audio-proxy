@@ -88,6 +88,12 @@ CLAUDE.md
 # Local maintenance artifacts
 code-review-report.md
 todo.md
+.codex-review/
+.playwright-cli/
+output/playwright/
+test/native/dist/
+test/native/tauri/src-tauri/target/
+test/native/tauri/src-tauri/gen/
 
 # Exported patch diffs (generated artifacts)
 patches/

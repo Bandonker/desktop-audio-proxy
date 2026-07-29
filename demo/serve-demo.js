@@ -24,11 +24,14 @@ const mimeTypes = {
   '.jpeg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.map': 'application/json',
-  '.tsx': 'text/plain'
+  '.cjs': 'text/plain',
+  '.ts': 'text/plain',
+  '.tsx': 'text/plain',
+  '.vue': 'text/plain',
 };
 
 const legacyRedirects = {
-  '/examples/react-video-player.tsx': '/examples/react-example.tsx'
+  '/examples/react-video-player.tsx': '/examples/react-example.tsx',
 };
 
 function resolvePathname(rawUrl) {
@@ -52,7 +55,10 @@ function safeResolve(baseDir, pathname) {
   const absolute = path.resolve(baseDir, normalizedPath);
   const resolvedBase = path.resolve(baseDir);
 
-  if (!absolute.startsWith(resolvedBase + path.sep) && absolute !== resolvedBase) {
+  if (
+    !absolute.startsWith(resolvedBase + path.sep) &&
+    absolute !== resolvedBase
+  ) {
     return null;
   }
 
@@ -72,10 +78,16 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
 
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { Allow: 'GET, HEAD' });
+    res.end('Method Not Allowed');
+    return;
+  }
+
   if (legacyRedirects[pathname]) {
     const location = legacyRedirects[pathname];
     res.writeHead(302, { Location: location });
-    res.end(`Redirecting to ${location}`);
+    res.end(req.method === 'HEAD' ? undefined : `Redirecting to ${location}`);
     return;
   }
 
@@ -108,12 +120,12 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': mimeType,
       'Content-Length': data.length,
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'no-cache',
     });
-    res.end(data);
+    res.end(req.method === 'HEAD' ? undefined : data);
   });
 });
 
-server.listen(port, () => {
+server.listen(port, 'localhost', () => {
   console.log(`Serving demo on http://localhost:${port}`);
 });

@@ -5,21 +5,21 @@
 :root {
   /* Monochrome Palette */
   --pure-black: #000000;
-  --dark-black: #0A0A0A;
+  --dark-black: #0a0a0a;
   --dark-gray-1: #111111;
-  --dark-gray-2: #1A1A1A;
+  --dark-gray-2: #1a1a1a;
   --dark-gray-3: #252525;
   --medium-gray: #404040;
   --light-gray: #808080;
-  --bright-gray: #B0B0B0;
-  --off-white: #E0E0E0;
-  --pure-white: #FFFFFF;
-  
+  --bright-gray: #b0b0b0;
+  --off-white: #e0e0e0;
+  --pure-white: #ffffff;
+
   /* Functional Colors (still monochrome) */
-  --success: #FFFFFF;
-  --error: #FFFFFF;
-  --warning: #B0B0B0;
-  
+  --success: #ffffff;
+  --error: #ffffff;
+  --warning: #b0b0b0;
+
   /* Typography */
   --font-mono: 'JetBrains Mono', 'Courier New', monospace;
   --font-sans: 'Space Grotesk', -apple-system, sans-serif;
@@ -41,7 +41,6 @@ body {
   position: relative;
 }
 
-
 /* Container */
 .container {
   max-width: 1200px;
@@ -53,43 +52,43 @@ body {
 
 @keyframes glitch {
   0% {
-    text-shadow: 
+    text-shadow:
       0.05em 0 0 rgba(255, 255, 255, 0.75),
       -0.05em -0.025em 0 rgba(255, 255, 255, 0.75),
       0.025em 0.05em 0 rgba(255, 255, 255, 0.75);
   }
   15% {
-    text-shadow: 
+    text-shadow:
       0.05em 0 0 rgba(255, 255, 255, 0.75),
       -0.05em -0.025em 0 rgba(255, 255, 255, 0.75),
       0.025em 0.05em 0 rgba(255, 255, 255, 0.75);
   }
   16% {
-    text-shadow: 
+    text-shadow:
       -0.05em -0.025em 0 rgba(255, 255, 255, 0.75),
       0.025em 0.025em 0 rgba(255, 255, 255, 0.75),
       -0.05em -0.05em 0 rgba(255, 255, 255, 0.75);
   }
   49% {
-    text-shadow: 
+    text-shadow:
       -0.05em -0.025em 0 rgba(255, 255, 255, 0.75),
       0.025em 0.025em 0 rgba(255, 255, 255, 0.75),
       -0.05em -0.05em 0 rgba(255, 255, 255, 0.75);
   }
   50% {
-    text-shadow: 
+    text-shadow:
       0.025em 0.05em 0 rgba(255, 255, 255, 0.75),
       0.05em 0 0 rgba(255, 255, 255, 0.75),
       0 -0.05em 0 rgba(255, 255, 255, 0.75);
   }
   99% {
-    text-shadow: 
+    text-shadow:
       0.025em 0.05em 0 rgba(255, 255, 255, 0.75),
       0.05em 0 0 rgba(255, 255, 255, 0.75),
       0 -0.05em 0 rgba(255, 255, 255, 0.75);
   }
   100% {
-    text-shadow: 
+    text-shadow:
       -0.025em 0 0 rgba(255, 255, 255, 0.75),
       -0.025em -0.025em 0 rgba(255, 255, 255, 0.75),
       -0.025em -0.05em 0 rgba(255, 255, 255, 0.75);
@@ -112,7 +111,7 @@ header {
 
 /* Terminal prompt decoration */
 header::before {
-  content: '$ npm install desktop-audio-proxy\A$ ./desktop-audio-proxy --init';
+  content: '$ npm install desktop-audio-proxy\A$ npm run demo';
   position: absolute;
   top: 10px;
   left: 10px;
@@ -136,8 +135,14 @@ header::after {
 }
 
 @keyframes terminal-blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .header-title {
@@ -170,7 +175,7 @@ header h1 {
 }
 
 header h1::before {
-  content: "DESKTOP AUDIO PROXY";
+  content: 'DESKTOP AUDIO PROXY';
   position: absolute;
   top: 0;
   left: 0;
@@ -186,6 +191,28 @@ header h1::before {
   font-weight: 400;
   margin-bottom: 1.5rem;
   font-family: var(--font-mono);
+}
+
+.nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.nav-links a {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--medium-gray);
+  color: var(--off-white);
+  text-decoration: none;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.nav-links a:hover {
+  border-color: var(--pure-white);
+  background: var(--dark-gray-2);
 }
 
 /* Status Badge - Clean Terminal Style */
@@ -213,6 +240,7 @@ header h1::before {
 .demo-section {
   display: grid;
   gap: 1.5rem;
+  min-width: 0;
 }
 
 /* Clean Card System */
@@ -222,6 +250,7 @@ header h1::before {
   padding: 2rem;
   position: relative;
   transition: all 0.2s ease;
+  min-width: 0;
 }
 
 .signature-card:hover {
@@ -242,6 +271,33 @@ header h1::before {
   font-family: var(--font-sans);
   padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--dark-gray-3);
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.section-heading h3 {
+  margin-bottom: 0;
+  min-width: min(100%, 25rem);
+}
+
+.eyebrow {
+  margin-bottom: 0.35rem;
+  color: var(--light-gray);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.section-copy {
+  max-width: 78ch;
+  margin-bottom: 1.5rem;
+  color: var(--bright-gray);
 }
 
 /* Status Grid */
@@ -418,6 +474,11 @@ header h1::before {
   transform: translateY(1px);
 }
 
+.btn-secondary {
+  border-color: var(--medium-gray);
+  color: var(--bright-gray);
+}
+
 /* Preset Buttons */
 .preset-buttons {
   display: flex;
@@ -525,11 +586,21 @@ header h1::before {
 }
 
 @keyframes loading-dots {
-  0% { content: '[WAIT]'; }
-  25% { content: '[WAIT.]'; }
-  50% { content: '[WAIT..]'; }
-  75% { content: '[WAIT...]'; }
-  100% { content: '[WAIT]'; }
+  0% {
+    content: '[WAIT]';
+  }
+  25% {
+    content: '[WAIT.]';
+  }
+  50% {
+    content: '[WAIT..]';
+  }
+  75% {
+    content: '[WAIT...]';
+  }
+  100% {
+    content: '[WAIT]';
+  }
 }
 
 /* Audio Player - Minimal */
@@ -612,6 +683,7 @@ header h1::before {
 .code-content {
   display: none;
   position: relative;
+  min-width: 0;
 }
 
 .code-content.active {
@@ -681,11 +753,9 @@ header h1::before {
   opacity: 1;
 }
 
-
 .copy-btn.copied .copy-text {
   content: 'Copied!';
 }
-
 
 /* Footer */
 footer {
@@ -742,6 +812,18 @@ footer a:hover::after {
   font-family: var(--font-mono);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Remove background glow - no longer needed */
 .bg-glow {
   display: none;
@@ -777,23 +859,43 @@ footer a:hover::after {
   .container {
     padding: 1rem;
   }
-  
+
   header h1 {
-    font-size: 2rem;
+    font-size: 1.65rem;
     animation: none; /* Disable glitch on mobile for performance */
   }
-  
+
+  .header-title {
+    flex-direction: column;
+  }
+
+  .logo {
+    margin: 0 0 0.75rem;
+  }
+
   .signature-card {
     padding: 1.5rem;
   }
-  
+
   .url-input-section {
     flex-direction: column;
   }
-  
+
+  .section-heading {
+    flex-direction: column;
+  }
+
   .comparison-grid,
   .capabilities-grid {
     grid-template-columns: 1fr;
+  }
+
+  .code-tabs {
+    overflow-x: auto;
+  }
+
+  .tab-btn {
+    min-width: 9rem;
   }
 }
 

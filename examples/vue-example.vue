@@ -1,271 +1,103 @@
-<template>
-  <div>
-    <h1>Desktop Audio Proxy - Vue Example</h1>
-    
-    <!-- Basic Audio Player -->
-    <section>
-      <h2>Basic Audio Player</h2>
-      <input 
-        v-model="audioUrl" 
-        placeholder="Enter audio URL..."
-        @input="updateUrl"
-      />
-      
-      <div v-if="isLoading">Loading...</div>
-      <div v-else-if="error">
-        Error: {{ error }}
-        <button @click="retry">Retry</button>
-      </div>
-      <div v-else-if="processedAudioUrl">
-        <audio controls :src="processedAudioUrl" />
-        <div v-if="streamInfo">
-          <p>Status: {{ streamInfo.status }}</p>
-          <p>Content Type: {{ streamInfo.contentType }}</p>
-          <p>Requires Proxy: {{ streamInfo.requiresProxy ? 'Yes' : 'No' }}</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- System Capabilities -->
-    <section>
-      <h2>System Audio Capabilities</h2>
-      <button @click="refreshCapabilities">Refresh</button>
-      
-      <div v-if="capabilitiesLoading">Loading capabilities...</div>
-      <div v-else-if="capabilitiesError">Error: {{ capabilitiesError }}</div>
-      <div v-else-if="capabilities">
-        <h3>Environment: {{ capabilities.environment }}</h3>
-        
-        <h4>Supported Formats:</h4>
-        <ul>
-          <li v-for="format in capabilities.supportedFormats" :key="format">
-            {{ format }}
-          </li>
-        </ul>
-        
-        <h4>Missing Codecs:</h4>
-        <ul>
-          <li v-for="codec in capabilities.missingCodecs" :key="codec">
-            {{ codec }}
-          </li>
-        </ul>
-        
-        <p v-if="capabilities.electronVersion">
-          Electron Version: {{ capabilities.electronVersion }}
-        </p>
-      </div>
-      
-      <div v-if="devices">
-        <h4>Audio Devices:</h4>
-        <div>
-          <h5>Input Devices:</h5>
-          <ul>
-            <li v-for="device in devices.inputDevices" :key="device.id">
-              {{ device.name }} ({{ device.id }})
-            </li>
-          </ul>
-          
-          <h5>Output Devices:</h5>
-          <ul>
-            <li v-for="device in devices.outputDevices" :key="device.id">
-              {{ device.name }} ({{ device.id }})
-            </li>
-          </ul>
-        </div>
-      </div>
-      
-      <div v-if="systemSettings">
-        <h4>System Settings:</h4>
-        <p>Default Input: {{ systemSettings.defaultInputDevice }}</p>
-        <p>Default Output: {{ systemSettings.defaultOutputDevice }}</p>
-        <p>Master Volume: {{ systemSettings.masterVolume }}%</p>
-      </div>
-    </section>
-
-    <!-- Proxy Status -->
-    <section>
-      <h2>Proxy Server Status</h2>
-      <p>Proxy URL: {{ proxyUrl }}</p>
-      
-      <div v-if="proxyChecking">Checking proxy status...</div>
-      <div v-else>
-        <p>Status: {{ proxyAvailable ? '✅ Available' : '❌ Unavailable' }}</p>
-        <p v-if="proxyError">Error: {{ proxyError }}</p>
-        <button @click="refreshProxy">Refresh</button>
-      </div>
-    </section>
-
-    <!-- Audio Metadata -->
-    <section>
-      <h2>Audio Metadata (Tauri/Electron only)</h2>
-      <input 
-        v-model="filePath" 
-        placeholder="Enter file path..."
-      />
-      
-      <div v-if="metadataLoading">Loading metadata...</div>
-      <div v-else-if="metadataError">Error: {{ metadataError }}</div>
-      <div v-else-if="metadata">
-        <p>Duration: {{ metadata.duration }}s</p>
-        <p>Bitrate: {{ metadata.bitrate }} kbps</p>
-        <p>Sample Rate: {{ metadata.sampleRate }} Hz</p>
-        <p>Channels: {{ metadata.channels }}</p>
-        <p>Format: {{ metadata.format }}</p>
-      </div>
-    </section>
-
-    <!-- Multiple Audio Players Example -->
-    <section>
-      <h2>Multiple Audio Players</h2>
-      <p><em>Note: In a real application, you would create a separate AudioPlayer.vue component (see example in comments below)</em></p>
-      <div 
-        v-for="(url, index) in audioUrls" 
-        :key="index"
-        style="border: 1px solid #ccc; margin: 10px; padding: 10px;"
-      >
-        <h3>Song {{ index + 1 }}</h3>
-        <p>URL: {{ url }}</p>
-        <p><em>Each would use useAudioProxy(ref(url)) individually</em></p>
-      </div>
-    </section>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
-import { 
-  useAudioProxy, 
-  useAudioCapabilities, 
-  useProxyStatus, 
-  useAudioMetadata 
-} from 'desktop-audio-proxy/vue';
+import { ref } from 'vue';
+import { useAudioProxy, useProxyStatus } from 'desktop-audio-proxy/vue';
 
-// Basic audio player state
-const audioUrl = ref('https://example.com/audio.mp3');
-const urlRef = ref(audioUrl.value);
+const stations = [
+  {
+    name: 'Groove Salad',
+    url: 'https://ice1.somafm.com/groovesalad-128-mp3',
+  },
+  {
+    name: 'Drone Zone',
+    url: 'https://ice2.somafm.com/dronezone-128-mp3',
+  },
+];
 
-const updateUrl = () => {
-  urlRef.value = audioUrl.value;
+const proxyOptions = {
+  proxyUrl: 'http://127.0.0.1:3002',
+  autoDetect: false,
+  autoStartProxy: false,
+  fallbackToOriginal: false,
+  retryAttempts: 2,
 };
+const draftUrl = ref(stations[0].url);
+const stationUrl = ref<string | null>(null);
+const { audioUrl, isLoading, error, retry, streamInfo } = useAudioProxy(
+  stationUrl,
+  proxyOptions
+);
+const {
+  isAvailable,
+  isChecking,
+  refresh: refreshProxy,
+} = useProxyStatus(proxyOptions);
 
-const { 
-  audioUrl: processedAudioUrl, 
-  isLoading, 
-  error, 
-  streamInfo, 
-  retry 
-} = useAudioProxy(urlRef);
+function prepareStation() {
+  const nextUrl = draftUrl.value.trim();
+  if (nextUrl) stationUrl.value = nextUrl;
+}
 
-// System capabilities
-const { 
-  capabilities, 
-  devices, 
-  systemSettings, 
-  isLoading: capabilitiesLoading, 
-  error: capabilitiesError, 
-  refresh: refreshCapabilities 
-} = useAudioCapabilities();
-
-// Proxy status
-const { 
-  isAvailable: proxyAvailable, 
-  isChecking: proxyChecking, 
-  error: proxyError, 
-  proxyUrl, 
-  refresh: refreshProxy 
-} = useProxyStatus();
-
-// Audio metadata
-const filePath = ref('/path/to/audio.mp3');
-const { 
-  metadata, 
-  isLoading: metadataLoading, 
-  error: metadataError 
-} = useAudioMetadata(filePath);
-
-// Multiple audio players
-const audioUrls = reactive([
-  'https://example.com/song1.mp3',
-  'https://example.com/song2.mp3',
-  'https://example.com/song3.mp3'
-]);
+function selectStation(url: string) {
+  draftUrl.value = url;
+  stationUrl.value = url;
+}
 </script>
 
-<!-- 
-  Individual Audio Player Component Example:
-  This would be implemented as a separate .vue file in a real application.
-  
-  AudioPlayer.vue:
-  <template>
-    <div style="border: 1px solid #ccc; margin: 10px; padding: 10px;">
-      <h3>{{ title }}</h3>
-      <div v-if="isLoading">Loading...</div>
-      <div v-else-if="error">Error: {{ error }}</div>
-      <audio v-else-if="audioUrl" controls :src="audioUrl" />
+<template>
+  <main>
+    <h1>Secure desktop radio player</h1>
+    <p>
+      Proxy status:
+      {{ isChecking ? 'checking…' : isAvailable ? 'available' : 'offline' }}
+      <button type="button" @click="refreshProxy">Refresh</button>
+    </p>
+
+    <form @submit.prevent="prepareStation">
+      <label for="station-url">Station URL</label>
+      <input id="station-url" v-model="draftUrl" type="url" required />
+      <button type="submit">Prepare station</button>
+    </form>
+
+    <div aria-label="Example stations">
+      <button
+        v-for="station in stations"
+        :key="station.url"
+        type="button"
+        @click="selectStation(station.url)"
+      >
+        {{ station.name }}
+      </button>
     </div>
-  </template>
 
-  <script setup lang="ts">
-  import { ref } from 'vue';
-  import { useAudioProxy } from 'desktop-audio-proxy/vue';
-
-  interface Props {
-    url: string;
-    title: string;
-  }
-
-  const props = defineProps<Props>();
-  const { audioUrl, isLoading, error } = useAudioProxy(ref(props.url));
-  </script>
--->
+    <p v-if="isLoading" role="status">Preparing the proxied stream…</p>
+    <p v-else-if="error" role="alert">
+      {{ error }}
+      <button type="button" @click="retry">Retry</button>
+    </p>
+    <audio v-if="audioUrl" :src="audioUrl" controls />
+    <p v-if="streamInfo">
+      Upstream status {{ streamInfo.status }};
+      {{ streamInfo.contentType ?? 'unknown media type' }}
+    </p>
+  </main>
+</template>
 
 <style scoped>
-section {
-  margin: 20px 0;
-  padding: 20px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+main {
+  max-width: 48rem;
+  margin: 2rem auto;
+  font-family: system-ui, sans-serif;
 }
 
-h2 {
-  color: #333;
-  border-bottom: 2px solid #007acc;
-  padding-bottom: 10px;
+form,
+[aria-label='Example stations'] {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1rem 0;
 }
 
-input {
-  width: 100%;
-  padding: 10px;
-  margin: 10px 0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-button {
-  background-color: #007acc;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  margin: 5px;
-}
-
-button:hover {
-  background-color: #005a9e;
-}
-
+input,
 audio {
   width: 100%;
-  margin: 10px 0;
-}
-
-ul {
-  list-style-type: disc;
-  margin-left: 20px;
-}
-
-li {
-  margin: 5px 0;
 }
 </style>

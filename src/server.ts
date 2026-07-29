@@ -10,3 +10,7 @@ export {
   startProxyServer,
 } from './server-impl';
 export { createAudioClient } from './client';
+export {
+  createMediaElementController,
+  type MediaElementController,
+} from './media-element';

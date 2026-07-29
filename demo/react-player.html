@@ -2,31 +2,98 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Desktop Audio Proxy — React Video Demo</title>
-    <link rel="stylesheet" href="styles-bandonker-signature.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Desktop Audio Proxy - React Radio Demo</title>
+    <link rel="stylesheet" href="styles-bandonker-signature.css" />
+    <link rel="icon" href="../assets/logo.png" type="image/png" />
     <style>
-      body { font-family: Inter, system-ui, -apple-system, sans-serif; margin: 24px; }
-      .container { max-width: 1000px; margin: 0 auto; }
-      .controls { display:flex; gap:8px; align-items:center; margin-bottom:12px }
-      input[type="url"] { flex:1; padding:8px; font-size:14px }
-      button { padding:8px 12px }
-      video { width:100%; max-width:900px; background:#000; border-radius:6px }
-      .meta { margin-top:12px; font-size:13px; color:#444 }
+      .react-shell {
+        max-width: 900px;
+        margin: 4rem auto;
+      }
+      .react-shell > p {
+        color: var(--bright-gray);
+        margin-bottom: 1.5rem;
+      }
+      .react-radio {
+        display: grid;
+        gap: 1.25rem;
+      }
+      .react-status,
+      .station-grid,
+      .player-panel,
+      dl {
+        display: grid;
+        gap: 0.75rem;
+      }
+      .react-status {
+        grid-template-columns: 1fr auto auto;
+        align-items: center;
+        padding: 1rem;
+        border: 1px solid var(--dark-gray-3);
+      }
+      .react-status button,
+      .station-grid button,
+      .player-panel button {
+        padding: 0.65rem 0.9rem;
+        border: 1px solid var(--medium-gray);
+        background: var(--dark-black);
+        color: var(--off-white);
+        cursor: pointer;
+      }
+      .station-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .station-grid button {
+        display: grid;
+        gap: 0.35rem;
+        text-align: left;
+      }
+      .station-grid button.selected {
+        border-color: var(--pure-white);
+      }
+      .station-grid small,
+      dt {
+        color: var(--light-gray);
+      }
+      .player-panel {
+        min-height: 170px;
+        align-content: center;
+        padding: 1.5rem;
+        border: 1px solid var(--dark-gray-3);
+        background: var(--dark-gray-1);
+      }
+      .player-panel audio {
+        width: 100%;
+        filter: invert(1) opacity(0.8);
+      }
+      dl {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      dl div {
+        padding: 0.75rem;
+        background: var(--pure-black);
+      }
+      @media (max-width: 640px) {
+        .react-status,
+        .station-grid,
+        dl {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
-    <div class="container">
-      <h1>React Video Demo (Rendered)</h1>
-      <p>Uses the running demo's audio client to create a playable URL and plays video through the proxy.</p>
-
+    <div class="container react-shell">
+      <p class="eyebrow">Framework example</p>
+      <h1>React radio player</h1>
+      <p>
+        A rendered <code>useAudioUrl</code> consumer with fail-closed proxy
+        configuration and stale-request protection.
+      </p>
       <div id="root"></div>
     </div>
 
-    <!-- Ensure demo internals are available (provides window.dapDemo.audioClient) -->
-    <script type="module" src="demo-full.js"></script>
-
-    <!-- Bundle built from the example (run `node scripts/build-react-demo.mjs` to produce) -->
     <script src="react-player.bundle.js"></script>
   </body>
 </html>

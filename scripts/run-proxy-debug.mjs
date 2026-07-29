@@ -13,7 +13,7 @@ import { startProxyServer } from '../dist/server.esm.js';
       enableLogging: true,
     });
 
-    console.log('Debug: server started on', server.getUrl ? server.getUrl() : 'unknown');
+    console.log('Debug: server started on', server.getProxyUrl());
 
     process.on('SIGINT', async () => {
       console.log('\nDebug: shutting down...');

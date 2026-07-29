@@ -55,7 +55,7 @@ describe('AudioProxyServer - Coverage Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.data).toHaveProperty('status', 'ok');
-      expect(response.data).toHaveProperty('version', '1.1.7');
+      expect(response.data).toHaveProperty('version', '1.1.8');
       expect(response.data).toHaveProperty('uptime');
       expect(response.data.config).toHaveProperty('port');
       expect(response.data.config).toHaveProperty('enableTranscoding', false);
@@ -115,6 +115,33 @@ describe('AudioProxyServer - Coverage Tests', () => {
   });
 
   describe('configuration handling', () => {
+    it.each([
+      [{ port: -1 }, 'Proxy port'],
+      [{ port: 65536 }, 'Proxy port'],
+      [{ timeout: 0 }, 'Proxy timeout'],
+      [{ maxRedirects: -1 }, 'maxRedirects'],
+      [{ cacheTTL: 0 }, 'cacheTTL'],
+      [{ maxCacheEntries: 0 }, 'maxCacheEntries'],
+      [{ enableTranscoding: true }, 'not implemented'],
+      [{ corsOrigins: [] }, 'corsOrigins'],
+      [{ allowedProtocols: [] }, 'allowedProtocols'],
+      [{ allowedHosts: [''] }, 'allowedHosts'],
+      [{ allowedHosts: ['*'] }, 'allowedHosts'],
+      [{ allowedHosts: ['https://radio.example'] }, 'allowedHosts'],
+      [{ allowedHosts: ['radio.example/path'] }, 'allowedHosts'],
+      [
+        {
+          allowedProtocols: ['ftp'] as unknown as Array<'http' | 'https'>,
+        },
+        'allowedProtocols',
+      ],
+    ] as Array<[ProxyConfig, string]>)(
+      'should reject invalid configuration %p',
+      (config, message) => {
+        expect(() => new AudioProxyServer(config)).toThrow(message);
+      }
+    );
+
     it('should handle logging enabled configuration', async () => {
       server = new AudioProxyServer({ port: testPort, enableLogging: true });
       await server.start();
@@ -142,7 +169,7 @@ describe('AudioProxyServer - Coverage Tests', () => {
         maxRedirects: 5,
         userAgent: 'TestAgent/1.0',
         enableLogging: false,
-        enableTranscoding: true,
+        enableTranscoding: false,
         cacheEnabled: false,
         cacheTTL: 1800,
       };
@@ -156,6 +183,14 @@ describe('AudioProxyServer - Coverage Tests', () => {
   });
 
   describe('port handling', () => {
+    it('should support operating-system assigned ports', async () => {
+      server = new AudioProxyServer({ port: 0, enableLogging: false });
+      await server.start();
+
+      expect(server.getActualPort()).toBeGreaterThan(0);
+      expect(server.getProxyUrl()).not.toContain(':0');
+    });
+
     it('should find alternative port when specified port is busy', async () => {
       const busyPort = testPort;
 
@@ -200,6 +235,25 @@ describe('AudioProxyServer - Coverage Tests', () => {
   });
 
   describe('server state management', () => {
+    it('should make repeated start calls idempotent', async () => {
+      server = new AudioProxyServer({ port: testPort, enableLogging: false });
+      await server.start();
+      const firstUrl = server.getProxyUrl();
+
+      await server.start();
+
+      expect(server.getProxyUrl()).toBe(firstUrl);
+    });
+
+    it('should coalesce concurrent start calls onto one server', async () => {
+      server = new AudioProxyServer({ port: 0, enableLogging: false });
+
+      await Promise.all([server.start(), server.start(), server.start()]);
+
+      const response = await axios.get(`${server.getProxyUrl()}/health`);
+      expect(response.data.status).toBe('ok');
+    });
+
     it('should handle stop when server is not started', async () => {
       server = new AudioProxyServer({ port: testPort });
 

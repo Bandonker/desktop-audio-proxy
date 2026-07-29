@@ -3,6 +3,8 @@ import {
   isRef,
   watch,
   onMounted,
+  onScopeDispose,
+  getCurrentScope,
   inject,
   readonly,
   type Ref,
@@ -14,6 +16,11 @@ import { ElectronAudioService } from './electron-service';
 import { AudioProxyOptions, StreamInfo, Environment } from './types';
 
 type DesktopAudioService = TauriAudioService | ElectronAudioService;
+
+/**
+ * Injection key used by both the plugin installer and useGlobalAudioProxy.
+ */
+export const audioProxyInjectionKey = Symbol('audioProxy');
 
 const WEB_AUDIO_MIME_TYPES: Record<string, string> = {
   MP3: 'audio/mpeg',
@@ -29,6 +36,12 @@ const WEB_AUDIO_FORMATS = Object.keys(WEB_AUDIO_MIME_TYPES);
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function registerScopeCleanup(cleanup: () => void): void {
+  if (getCurrentScope()) {
+    onScopeDispose(cleanup);
+  }
 }
 
 function createDesktopAudioService(
@@ -58,8 +71,10 @@ export function useAudioProxy(
   // Create reactive URL ref if needed
   const urlRef = isRef(url) ? (url as Ref<string | null>) : ref(url);
   const client = new AudioProxyClient(options);
+  let requestGeneration = 0;
 
   const processUrl = async (inputUrl: string) => {
+    const requestId = ++requestGeneration;
     isLoading.value = true;
     error.value = null;
     audioUrl.value = null;
@@ -68,15 +83,20 @@ export function useAudioProxy(
     try {
       // Get stream info first
       const info = await client.canPlayUrl(inputUrl);
+      if (requestId !== requestGeneration) return;
       streamInfo.value = info;
 
       // Get playable URL
       const playableUrl = await client.getPlayableUrl(inputUrl);
+      if (requestId !== requestGeneration) return;
       audioUrl.value = playableUrl;
     } catch (err) {
+      if (requestId !== requestGeneration) return;
       error.value = getErrorMessage(err);
     } finally {
-      isLoading.value = false;
+      if (requestId === requestGeneration) {
+        isLoading.value = false;
+      }
     }
   };
 
@@ -93,6 +113,7 @@ export function useAudioProxy(
       if (newUrl) {
         processUrl(newUrl);
       } else {
+        requestGeneration += 1;
         audioUrl.value = null;
         streamInfo.value = null;
         error.value = null;
@@ -101,6 +122,11 @@ export function useAudioProxy(
     },
     { immediate: true }
   );
+
+  registerScopeCleanup(() => {
+    requestGeneration += 1;
+    void client.stopProxyServer();
+  });
 
   return {
     audioUrl: readonly(audioUrl),
@@ -140,10 +166,14 @@ export function useAudioCapabilities() {
   const error = ref<string | null>(null);
 
   const client = new AudioProxyClient();
+  let requestGeneration = 0;
 
   const refresh = async () => {
+    const requestId = ++requestGeneration;
     isLoading.value = true;
     error.value = null;
+    devices.value = null;
+    systemSettings.value = null;
 
     try {
       const environment = client.getEnvironment();
@@ -152,6 +182,7 @@ export function useAudioCapabilities() {
       if (service) {
         // Get codec capabilities
         const codecInfo = await service.checkSystemCodecs();
+        if (requestId !== requestGeneration) return;
         capabilities.value = {
           ...codecInfo,
           environment,
@@ -159,6 +190,7 @@ export function useAudioCapabilities() {
 
         // Get audio devices
         const deviceInfo = await service.getAudioDevices();
+        if (requestId !== requestGeneration) return;
         if (deviceInfo) {
           devices.value = deviceInfo;
         }
@@ -168,17 +200,20 @@ export function useAudioCapabilities() {
           const settings = await (
             service as ElectronAudioService
           ).getSystemAudioSettings();
+          if (requestId !== requestGeneration) return;
           if (settings) {
             systemSettings.value = settings;
           }
         }
       } else {
         // Basic web environment capabilities
-        const audio = new Audio();
+        const audio = typeof Audio === 'undefined' ? null : new Audio();
         const supportedFormats = WEB_AUDIO_FORMATS.filter(
-          format => audio.canPlayType(WEB_AUDIO_MIME_TYPES[format]) !== ''
+          format =>
+            (audio?.canPlayType(WEB_AUDIO_MIME_TYPES[format]) ?? '') !== ''
         );
 
+        if (requestId !== requestGeneration) return;
         capabilities.value = {
           supportedFormats,
           missingCodecs: WEB_AUDIO_FORMATS.filter(
@@ -189,14 +224,21 @@ export function useAudioCapabilities() {
         };
       }
     } catch (err) {
-      error.value = getErrorMessage(err);
+      if (requestId === requestGeneration) {
+        error.value = getErrorMessage(err);
+      }
     } finally {
-      isLoading.value = false;
+      if (requestId === requestGeneration) {
+        isLoading.value = false;
+      }
     }
   };
 
   onMounted(() => {
     refresh();
+  });
+  registerScopeCleanup(() => {
+    requestGeneration += 1;
   });
 
   return {
@@ -219,25 +261,35 @@ export function useProxyStatus(options?: AudioProxyOptions) {
   const proxyUrl = ref<string>('');
 
   const client = new AudioProxyClient(options);
+  let requestGeneration = 0;
 
   const refresh = async () => {
+    const requestId = ++requestGeneration;
     isChecking.value = true;
     error.value = null;
 
     try {
       const available = await client.isProxyAvailable();
+      if (requestId !== requestGeneration) return;
       isAvailable.value = available;
       proxyUrl.value = client.getProxyUrl();
     } catch (err) {
-      error.value = getErrorMessage(err);
-      isAvailable.value = false;
+      if (requestId === requestGeneration) {
+        error.value = getErrorMessage(err);
+        isAvailable.value = false;
+      }
     } finally {
-      isChecking.value = false;
+      if (requestId === requestGeneration) {
+        isChecking.value = false;
+      }
     }
   };
 
   onMounted(() => {
     refresh();
+  });
+  registerScopeCleanup(() => {
+    requestGeneration += 1;
   });
 
   return {
@@ -268,8 +320,10 @@ export function useAudioMetadata(filePath: Ref<string | null> | string | null) {
     ? (filePath as Ref<string | null>)
     : ref(filePath);
   const client = new AudioProxyClient();
+  let requestGeneration = 0;
 
   const getMetadata = async (path: string) => {
+    const requestId = ++requestGeneration;
     isLoading.value = true;
     error.value = null;
     metadata.value = null;
@@ -280,15 +334,23 @@ export function useAudioMetadata(filePath: Ref<string | null> | string | null) {
 
       if (service) {
         const result = await service.getAudioMetadata(path);
-        metadata.value = result;
+        if (requestId === requestGeneration) {
+          metadata.value = result;
+        }
       } else {
-        error.value =
-          'Audio metadata extraction is only available in Tauri or Electron environments';
+        if (requestId === requestGeneration) {
+          error.value =
+            'Audio metadata extraction is only available in Tauri or Electron environments';
+        }
       }
     } catch (err) {
-      error.value = getErrorMessage(err);
+      if (requestId === requestGeneration) {
+        error.value = getErrorMessage(err);
+      }
     } finally {
-      isLoading.value = false;
+      if (requestId === requestGeneration) {
+        isLoading.value = false;
+      }
     }
   };
 
@@ -298,6 +360,7 @@ export function useAudioMetadata(filePath: Ref<string | null> | string | null) {
       if (newPath) {
         getMetadata(newPath);
       } else {
+        requestGeneration += 1;
         metadata.value = null;
         error.value = null;
         isLoading.value = false;
@@ -305,6 +368,9 @@ export function useAudioMetadata(filePath: Ref<string | null> | string | null) {
     },
     { immediate: true }
   );
+  registerScopeCleanup(() => {
+    requestGeneration += 1;
+  });
 
   return {
     metadata: readonly(metadata),
@@ -326,16 +392,11 @@ export function createAudioProxy(globalOptions: AudioProxyGlobalOptions = {}) {
       const client = new AudioProxyClient(globalOptions.defaultOptions);
 
       app.config.globalProperties.$audioProxy = client;
-      app.provide('audioProxy', client);
+      app.provide(audioProxyInjectionKey, client);
       app.provide('audioProxyOptions', globalOptions.defaultOptions || {});
     },
   };
 }
-
-/**
- * Injection key for dependency injection
- */
-export const audioProxyInjectionKey = Symbol('audioProxy');
 
 /**
  * Composable to inject the global audio proxy client
