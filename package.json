@@ -117,11 +117,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bandonker/desktop-audio-proxy.git"
+    "url": "git+https://github.com/Bandonker/desktop-audio-proxy.git"
   },
-  "homepage": "https://github.com/bandonker/desktop-audio-proxy#readme",
+  "homepage": "https://github.com/Bandonker/desktop-audio-proxy#readme",
   "bugs": {
-    "url": "https://github.com/bandonker/desktop-audio-proxy/issues"
+    "url": "https://github.com/Bandonker/desktop-audio-proxy/issues"
   },
   "files": [
     "dist",
