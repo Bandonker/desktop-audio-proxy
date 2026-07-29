@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Kept React hook and provider auto-start clients alive across development
+  Strict Mode effect replay while still stopping them after a real unmount or
+  replacement.
 - Expanded known HLS `{$variable}` definitions before URL resolution and
   carried bounded parent definitions into child playlists so imported values
   retain their upstream base and URI delimiters.

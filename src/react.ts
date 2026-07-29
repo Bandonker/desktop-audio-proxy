@@ -12,6 +12,7 @@ import {
 import { AudioProxyClient } from './client';
 import { TauriAudioService } from './tauri-service';
 import { ElectronAudioService } from './electron-service';
+import { createDeferredProxyStopController } from './react-lifecycle';
 import { AudioProxyOptions, StreamInfo, Environment } from './types';
 
 type DesktopAudioService = TauriAudioService | ElectronAudioService;
@@ -70,6 +71,22 @@ function createDesktopAudioService(
   return null;
 }
 
+function useOwnedAudioProxyClient(
+  options?: AudioProxyOptions
+): AudioProxyClient {
+  const client = useMemo(() => new AudioProxyClient(options), [options]);
+  const stopController = useMemo(createDeferredProxyStopController, []);
+
+  useEffect(() => {
+    stopController.cancel(client);
+    return () => {
+      stopController.schedule(client);
+    };
+  }, [client, stopController]);
+
+  return client;
+}
+
 /**
  * Hook for managing audio proxy client with automatic URL processing
  */
@@ -82,11 +99,9 @@ export function useAudioProxy(url: string | null, options?: AudioProxyOptions) {
   // Stabilize known option fields without serializing away callback functions.
   const stableOptions = useStableAudioProxyOptions(options);
 
-  // Memoize client to prevent unnecessary recreations
-  const client = useMemo(
-    () => new AudioProxyClient(stableOptions),
-    [stableOptions]
-  );
+  // Memoize and lifecycle-manage the client without treating React Strict
+  // Mode's development-only effect replay as a final shutdown.
+  const client = useOwnedAudioProxyClient(stableOptions);
   const requestGeneration = useRef(0);
 
   const processUrl = useCallback(
@@ -134,13 +149,6 @@ export function useAudioProxy(url: string | null, options?: AudioProxyOptions) {
       requestGeneration.current += 1;
     };
   }, [url, processUrl]);
-
-  useEffect(
-    () => () => {
-      void client.stopProxyServer();
-    },
-    [client]
-  );
 
   const retry = useCallback(() => {
     if (url) {
@@ -408,10 +416,7 @@ export function AudioProxyProvider({
   options?: AudioProxyOptions;
 }) {
   const stableOptions = useStableAudioProxyOptions(options);
-  const client = useMemo(
-    () => new AudioProxyClient(stableOptions),
-    [stableOptions]
-  );
+  const client = useOwnedAudioProxyClient(stableOptions);
 
   const value = useMemo(
     () => ({
@@ -419,13 +424,6 @@ export function AudioProxyProvider({
       client,
     }),
     [stableOptions, client]
-  );
-
-  useEffect(
-    () => () => {
-      void client.stopProxyServer();
-    },
-    [client]
   );
 
   return createElement(AudioProxyContext.Provider, { value }, children);

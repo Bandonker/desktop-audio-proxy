@@ -73,6 +73,8 @@ verify:docs`, and a demo smoke test; referenced screenshots must come from a
 - `AudioProxyClient.stopProxyServer()` permanently disables client-owned
   auto-start for that instance; preserve this shutdown boundary in lifecycle
   changes.
+- React-owned clients defer unmount cleanup by one task so development Strict
+  Mode effect replay can cancel shutdown for the same memoized client.
 - `src/media-element.ts` owns the race-safe controller for existing
   `<audio>`/`<video>` elements.
 - `src/media-compatibility.ts` owns runtime engine detection, typed source

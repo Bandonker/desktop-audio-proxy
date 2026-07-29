@@ -21975,6 +21975,27 @@ var DAPReactDemo = (() => {
     }
   };
 
+  // src/react-lifecycle.ts
+  function createDeferredProxyStopController() {
+    const pendingStops = /* @__PURE__ */ new Map();
+    return {
+      cancel(client) {
+        const pendingStop = pendingStops.get(client);
+        if (pendingStop === void 0) return;
+        clearTimeout(pendingStop);
+        pendingStops.delete(client);
+      },
+      schedule(client) {
+        if (pendingStops.has(client)) return;
+        const pendingStop = setTimeout(() => {
+          pendingStops.delete(client);
+          void client.stopProxyServer();
+        }, 0);
+        pendingStops.set(client, pendingStop);
+      }
+    };
+  }
+
   // src/react.ts
   var WEB_AUDIO_MIME_TYPES = {
     MP3: "audio/mpeg",
@@ -22010,16 +22031,24 @@ var DAPReactDemo = (() => {
     const optionsKey = getOptionsMemoKey(options);
     return (0, import_react.useMemo)(() => options, [optionsKey, (_a = options == null ? void 0 : options.telemetry) == null ? void 0 : _a.onEvent]);
   }
+  function useOwnedAudioProxyClient(options) {
+    const client = (0, import_react.useMemo)(() => new AudioProxyClient(options), [options]);
+    const stopController = (0, import_react.useMemo)(createDeferredProxyStopController, []);
+    (0, import_react.useEffect)(() => {
+      stopController.cancel(client);
+      return () => {
+        stopController.schedule(client);
+      };
+    }, [client, stopController]);
+    return client;
+  }
   function useAudioProxy(url, options) {
     const [audioUrl, setAudioUrl] = (0, import_react.useState)(null);
     const [isLoading, setIsLoading] = (0, import_react.useState)(false);
     const [error, setError] = (0, import_react.useState)(null);
     const [streamInfo, setStreamInfo] = (0, import_react.useState)(null);
     const stableOptions = useStableAudioProxyOptions(options);
-    const client = (0, import_react.useMemo)(
-      () => new AudioProxyClient(stableOptions),
-      [stableOptions]
-    );
+    const client = useOwnedAudioProxyClient(stableOptions);
     const requestGeneration = (0, import_react.useRef)(0);
     const processUrl = (0, import_react.useCallback)(
       async (inputUrl) => {
@@ -22060,12 +22089,6 @@ var DAPReactDemo = (() => {
         requestGeneration.current += 1;
       };
     }, [url, processUrl]);
-    (0, import_react.useEffect)(
-      () => () => {
-        void client.stopProxyServer();
-      },
-      [client]
-    );
     const retry = (0, import_react.useCallback)(() => {
       if (url) {
         processUrl(url);
