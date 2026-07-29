@@ -232,18 +232,43 @@ describe('proxy network policy', () => {
 
     expect(rewritten).toContain(
       `URI="/proxy?url=${encodeURIComponent(
-        'https://media.example/live/keys/key.bin?token='
-      )}{$auth}"`
+        'https://media.example/live/keys/key.bin?token=signed-query'
+      )}"`
     );
     expect(rewritten).toContain(
       `/proxy?url=${encodeURIComponent(
         'https://media.example/live/master/variants/'
-      )}{$rendition}${encodeURIComponent('.m3u8?token=')}{$auth}`
+      )}{$rendition}${encodeURIComponent('.m3u8?token=signed-query')}`
     );
     expect(rewritten).toContain(
       `/proxy?url=${encodeURIComponent(
-        'https://media.example/live/master/segments/one.ts?token='
-      )}{$auth}`
+        'https://media.example/live/master/segments/one.ts?token=signed-query'
+      )}`
     );
+  });
+
+  it('expands an HLS variable with an absolute URL before base resolution', () => {
+    const playlist = [
+      '#EXTM3U',
+      '#EXT-X-DEFINE:NAME="cdn",VALUE="https://cdn.example"',
+      '#EXT-X-DEFINE:IMPORT="parentCdn"',
+      '#EXTINF:5,',
+      '{$cdn}/segments/one.ts',
+      '#EXTINF:5,',
+      '{$parentCdn}/segments/two.ts',
+    ].join('\n');
+
+    const rewritten = rewriteHlsPlaylist(
+      playlist,
+      'https://manifest.example/live/index.m3u8'
+    );
+
+    expect(rewritten).toContain(
+      `/proxy?url=${encodeURIComponent('https://cdn.example/segments/one.ts')}`
+    );
+    expect(rewritten).not.toContain(
+      encodeURIComponent('https://manifest.example/live/{$cdn}/segments/one.ts')
+    );
+    expect(rewritten).toContain('\n{$parentCdn}/segments/two.ts');
   });
 });

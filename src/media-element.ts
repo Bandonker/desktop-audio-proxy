@@ -43,7 +43,15 @@ export function createMediaElementController(
       throw new Error('Media element controller has been disposed');
     }
     const generation = ++requestGeneration;
-    const playableUrl = await client.getPlayableUrl(url);
+    let playableUrl: string;
+    try {
+      playableUrl = await client.getPlayableUrl(url);
+    } catch (error) {
+      if (generation !== requestGeneration) {
+        return null;
+      }
+      throw error;
+    }
     if (generation !== requestGeneration) {
       return null;
     }

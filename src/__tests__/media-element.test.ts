@@ -257,6 +257,39 @@ describe('media element controller', () => {
     expect(media.load).toHaveBeenCalledTimes(1);
   });
 
+  it('suppresses a proxy failure after the pending load is stopped', async () => {
+    const media = createTestMediaElement();
+    const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
+    let signalHealthCheckStarted: (() => void) | undefined;
+    let rejectHealthCheck: ((error: Error) => void) | undefined;
+    const healthCheckStarted = new Promise<void>(resolve => {
+      signalHealthCheckStarted = resolve;
+    });
+    mockFetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((_resolve, reject) => {
+          rejectHealthCheck = reject;
+          signalHealthCheckStarted?.();
+        })
+    );
+    const controller = createMediaElementController(media, {
+      proxyUrl: 'http://localhost:3001',
+      autoDetect: false,
+      fallbackToOriginal: false,
+      retryAttempts: 1,
+      retryDelay: 0,
+    });
+
+    const pendingLoad = controller.load('https://radio.example/live.mp3');
+    await healthCheckStarted;
+    controller.stop();
+    rejectHealthCheck?.(new Error('proxy offline'));
+
+    await expect(pendingLoad).resolves.toBeNull();
+    expect(media.src).toBe('');
+    expect(media.play).not.toHaveBeenCalled();
+  });
+
   it('disposes playback without allowing pending work to restore the source', async () => {
     const media = createTestMediaElement();
     const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;

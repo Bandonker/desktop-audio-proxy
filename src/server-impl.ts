@@ -172,24 +172,56 @@ function createNetworkPolicyError(message: string): NodeJS.ErrnoException {
   return error;
 }
 
+const HLS_VARIABLE_REFERENCE_REGEX = /\{\$([A-Za-z0-9_-]+)\}/g;
+
+function expandKnownHlsVariables(
+  value: string,
+  definitions: ReadonlyMap<string, string>
+): string {
+  let expanded = value;
+  for (let pass = 0; pass <= definitions.size; pass += 1) {
+    const next = expanded.replace(
+      HLS_VARIABLE_REFERENCE_REGEX,
+      (reference, name: string) => definitions.get(name) ?? reference
+    );
+    if (next === expanded) {
+      break;
+    }
+    expanded = next;
+  }
+  return expanded;
+}
+
 function toProxiedPlaylistReference(
   reference: string,
-  baseUrl: string
+  baseUrl: string,
+  definitions: ReadonlyMap<string, string>
 ): string {
-  const variables: Array<{ placeholder: string; reference: string }> = [];
+  const expandedReference = expandKnownHlsVariables(reference, definitions);
+  if (/^\{\$[A-Za-z0-9_-]+\}/.test(expandedReference)) {
+    return reference;
+  }
+
+  const unresolvedVariables: Array<{
+    placeholder: string;
+    reference: string;
+  }> = [];
   let placeholderIndex = 0;
-  const protectedReference = reference.replace(
-    /\{\$[A-Za-z0-9_-]+\}/g,
+  const protectedReference = expandedReference.replace(
+    HLS_VARIABLE_REFERENCE_REGEX,
     variableReference => {
       let placeholder: string;
       do {
         placeholder = `daphlsvariable${placeholderIndex}marker`;
         placeholderIndex += 1;
       } while (
-        reference.includes(placeholder) ||
+        expandedReference.includes(placeholder) ||
         baseUrl.includes(placeholder)
       );
-      variables.push({ placeholder, reference: variableReference });
+      unresolvedVariables.push({
+        placeholder,
+        reference: variableReference,
+      });
       return placeholder;
     }
   );
@@ -200,7 +232,7 @@ function toProxiedPlaylistReference(
       return reference;
     }
     let encodedUrl = encodeURIComponent(resolved.toString());
-    for (const variable of variables) {
+    for (const variable of unresolvedVariables) {
       encodedUrl = encodedUrl
         .split(encodeURIComponent(variable.placeholder))
         .join(variable.reference);
@@ -209,6 +241,46 @@ function toProxiedPlaylistReference(
   } catch {
     return reference;
   }
+}
+
+function getHlsQuotedAttribute(
+  attributeList: string,
+  name: 'NAME' | 'VALUE' | 'QUERYPARAM'
+): string | undefined {
+  return new RegExp(`(?:^|,)${name}="([^"]*)"`).exec(attributeList)?.[1];
+}
+
+function collectHlsVariableDefinitions(
+  lines: readonly string[],
+  baseUrl: string
+): Map<string, string> {
+  const definitions = new Map<string, string>();
+  let baseQuery: URLSearchParams | undefined;
+  try {
+    baseQuery = new URL(baseUrl).searchParams;
+  } catch {
+    baseQuery = undefined;
+  }
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    const prefix = '#EXT-X-DEFINE:';
+    if (!trimmedLine.startsWith(prefix)) {
+      continue;
+    }
+    const attributeList = trimmedLine.slice(prefix.length);
+    const name = getHlsQuotedAttribute(attributeList, 'NAME');
+    const value = getHlsQuotedAttribute(attributeList, 'VALUE');
+    if (name && value !== undefined) {
+      definitions.set(name, value);
+      continue;
+    }
+    const queryParameter = getHlsQuotedAttribute(attributeList, 'QUERYPARAM');
+    if (queryParameter && baseQuery?.has(queryParameter)) {
+      definitions.set(queryParameter, baseQuery.get(queryParameter) ?? '');
+    }
+  }
+  return definitions;
 }
 
 export function isHostAllowed(
@@ -264,8 +336,9 @@ function isValidAllowedHostPattern(entry: string): boolean {
 }
 
 export function rewriteHlsPlaylist(playlist: string, baseUrl: string): string {
-  return playlist
-    .split(/\r?\n/)
+  const lines = playlist.split(/\r?\n/);
+  const definitions = collectHlsVariableDefinitions(lines, baseUrl);
+  return lines
     .map(line => {
       const trimmedLine = line.trim();
       if (!trimmedLine) {
@@ -276,7 +349,11 @@ export function rewriteHlsPlaylist(playlist: string, baseUrl: string): string {
         return line.replace(
           /URI="([^"]+)"/g,
           (_match, reference: string) =>
-            `URI="${toProxiedPlaylistReference(reference, baseUrl)}"`
+            `URI="${toProxiedPlaylistReference(
+              reference,
+              baseUrl,
+              definitions
+            )}"`
         );
       }
 
@@ -287,7 +364,7 @@ export function rewriteHlsPlaylist(playlist: string, baseUrl: string): string {
       const trailingWhitespace = line.slice(line.trimEnd().length);
       return (
         leadingWhitespace +
-        toProxiedPlaylistReference(trimmedLine, baseUrl) +
+        toProxiedPlaylistReference(trimmedLine, baseUrl, definitions) +
         trailingWhitespace
       );
     })
