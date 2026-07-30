@@ -249,6 +249,16 @@ describe('Audio Services', () => {
     });
 
     describe('getAudioMetadata', () => {
+      it('should return null without a browser global', async () => {
+        const mockGetEnvironment = jest.fn().mockReturnValue('tauri');
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
+        delete (globalThis as unknown as { window?: TestWindow }).window;
+
+        await expect(
+          service.getAudioMetadata('/path/to/audio.mp3')
+        ).resolves.toBeNull();
+      });
+
       it('should return null for non-Tauri environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('web');
         getAudioClient(service).getEnvironment = mockGetEnvironment;
@@ -633,6 +643,16 @@ describe('Audio Services', () => {
     });
 
     describe('getAudioMetadata', () => {
+      it('should return null without a browser global', async () => {
+        const mockGetEnvironment = jest.fn().mockReturnValue('electron');
+        getAudioClient(service).getEnvironment = mockGetEnvironment;
+        delete (globalThis as unknown as { window?: TestWindow }).window;
+
+        await expect(
+          service.getAudioMetadata('/path/to/audio.mp3')
+        ).resolves.toBeNull();
+      });
+
       it('should return null for non-Electron environment', async () => {
         const mockGetEnvironment = jest.fn().mockReturnValue('web');
         getAudioClient(service).getEnvironment = mockGetEnvironment;
@@ -853,5 +873,30 @@ describe('Audio Services', () => {
         consoleWarnSpy.mockRestore();
       });
     });
+  });
+
+  it('reports codecs conservatively when the Audio API is unavailable', async () => {
+    const runtime = globalThis as unknown as {
+      Audio?: typeof Audio;
+    };
+    const originalAudio = runtime.Audio;
+    delete runtime.Audio;
+
+    try {
+      const tauriCodecs = await new TauriAudioService().checkSystemCodecs();
+      const electronCodecs =
+        await new ElectronAudioService().checkSystemCodecs();
+
+      expect(tauriCodecs.supportedFormats).toEqual([]);
+      expect(electronCodecs.supportedFormats).toEqual([]);
+      expect(tauriCodecs.missingCodecs).toHaveLength(7);
+      expect(electronCodecs.missingCodecs).toHaveLength(7);
+    } finally {
+      if (originalAudio) {
+        runtime.Audio = originalAudio;
+      } else {
+        delete runtime.Audio;
+      }
+    }
   });
 });

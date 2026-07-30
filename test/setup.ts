@@ -67,10 +67,9 @@ global.Audio = jest.fn().mockImplementation(() => ({
 
 const suppressConsoleOutput = () => undefined;
 
-// Only reset mock call history, not implementations
 beforeEach(() => {
-  // Clear call history but preserve implementations set by individual tests
-  mockFetch.mockClear();
+  // Reset queued implementations so one failing test cannot contaminate the next.
+  mockFetch.mockReset();
   // Reset Audio mock calls
   (global.Audio as jest.Mock).mockClear();
 

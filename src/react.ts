@@ -5,12 +5,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import { AudioProxyClient } from './client';
 import { TauriAudioService } from './tauri-service';
 import { ElectronAudioService } from './electron-service';
+import { createDeferredProxyStopController } from './react-lifecycle';
 import { AudioProxyOptions, StreamInfo, Environment } from './types';
 
 type DesktopAudioService = TauriAudioService | ElectronAudioService;
@@ -31,6 +33,32 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
+function getOptionsMemoKey(options?: AudioProxyOptions): string {
+  return JSON.stringify({
+    proxyUrl: options?.proxyUrl,
+    autoDetect: options?.autoDetect,
+    fallbackToOriginal: options?.fallbackToOriginal,
+    retryAttempts: options?.retryAttempts,
+    retryDelay: options?.retryDelay,
+    autoStartProxy: options?.autoStartProxy,
+    proxyServerConfig: options?.proxyServerConfig,
+    telemetry: options?.telemetry
+      ? {
+          enabled: options.telemetry.enabled,
+          trackPerformance: options.telemetry.trackPerformance,
+          trackErrors: options.telemetry.trackErrors,
+        }
+      : undefined,
+  });
+}
+
+function useStableAudioProxyOptions(
+  options?: AudioProxyOptions
+): AudioProxyOptions | undefined {
+  const optionsKey = getOptionsMemoKey(options);
+  return useMemo(() => options, [optionsKey, options?.telemetry?.onEvent]);
+}
+
 function createDesktopAudioService(
   environment: Environment
 ): DesktopAudioService | null {
@@ -43,6 +71,22 @@ function createDesktopAudioService(
   return null;
 }
 
+function useOwnedAudioProxyClient(
+  options?: AudioProxyOptions
+): AudioProxyClient {
+  const client = useMemo(() => new AudioProxyClient(options), [options]);
+  const stopController = useMemo(createDeferredProxyStopController, []);
+
+  useEffect(() => {
+    stopController.cancel(client);
+    return () => {
+      stopController.schedule(client);
+    };
+  }, [client, stopController]);
+
+  return client;
+}
+
 /**
  * Hook for managing audio proxy client with automatic URL processing
  */
@@ -52,20 +96,17 @@ export function useAudioProxy(url: string | null, options?: AudioProxyOptions) {
   const [error, setError] = useState<string | null>(null);
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
 
-  // Memoize options with deep comparison to prevent unnecessary client recreations
-  const optionsJson = JSON.stringify(options ?? {});
-  const stableOptions = useMemo(() => {
-    return JSON.parse(optionsJson) as AudioProxyOptions;
-  }, [optionsJson]);
+  // Stabilize known option fields without serializing away callback functions.
+  const stableOptions = useStableAudioProxyOptions(options);
 
-  // Memoize client to prevent unnecessary recreations
-  const client = useMemo(
-    () => new AudioProxyClient(stableOptions),
-    [stableOptions]
-  );
+  // Memoize and lifecycle-manage the client without treating React Strict
+  // Mode's development-only effect replay as a final shutdown.
+  const client = useOwnedAudioProxyClient(stableOptions);
+  const requestGeneration = useRef(0);
 
   const processUrl = useCallback(
     async (inputUrl: string) => {
+      const requestId = ++requestGeneration.current;
       setIsLoading(true);
       setError(null);
       setAudioUrl(null);
@@ -74,15 +115,20 @@ export function useAudioProxy(url: string | null, options?: AudioProxyOptions) {
       try {
         // Get stream info first
         const info = await client.canPlayUrl(inputUrl);
+        if (requestId !== requestGeneration.current) return;
         setStreamInfo(info);
 
         // Get playable URL
         const playableUrl = await client.getPlayableUrl(inputUrl);
+        if (requestId !== requestGeneration.current) return;
         setAudioUrl(playableUrl);
       } catch (err) {
+        if (requestId !== requestGeneration.current) return;
         setError(getErrorMessage(err));
       } finally {
-        setIsLoading(false);
+        if (requestId === requestGeneration.current) {
+          setIsLoading(false);
+        }
       }
     },
     [client]
@@ -92,11 +138,16 @@ export function useAudioProxy(url: string | null, options?: AudioProxyOptions) {
     if (url) {
       processUrl(url);
     } else {
+      requestGeneration.current += 1;
       setAudioUrl(null);
       setStreamInfo(null);
       setError(null);
       setIsLoading(false);
     }
+
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, [url, processUrl]);
 
   const retry = useCallback(() => {
@@ -143,10 +194,14 @@ export function useAudioCapabilities() {
   const [error, setError] = useState<string | null>(null);
 
   const client = useMemo(() => new AudioProxyClient(), []);
+  const requestGeneration = useRef(0);
 
   const refreshCapabilities = useCallback(async () => {
+    const requestId = ++requestGeneration.current;
     setIsLoading(true);
     setError(null);
+    setDevices(null);
+    setSystemSettings(null);
 
     try {
       const environment = client.getEnvironment();
@@ -155,6 +210,7 @@ export function useAudioCapabilities() {
       if (service) {
         // Get codec capabilities
         const codecInfo = await service.checkSystemCodecs();
+        if (requestId !== requestGeneration.current) return;
         setCapabilities({
           ...codecInfo,
           environment,
@@ -162,6 +218,7 @@ export function useAudioCapabilities() {
 
         // Get audio devices
         const deviceInfo = await service.getAudioDevices();
+        if (requestId !== requestGeneration.current) return;
         if (deviceInfo) {
           setDevices(deviceInfo);
         }
@@ -171,17 +228,20 @@ export function useAudioCapabilities() {
           const settings = await (
             service as ElectronAudioService
           ).getSystemAudioSettings();
+          if (requestId !== requestGeneration.current) return;
           if (settings) {
             setSystemSettings(settings);
           }
         }
       } else {
         // Basic web environment capabilities
-        const audio = new Audio();
+        const audio = typeof Audio === 'undefined' ? null : new Audio();
         const supportedFormats = WEB_AUDIO_FORMATS.filter(
-          format => audio.canPlayType(WEB_AUDIO_MIME_TYPES[format]) !== ''
+          format =>
+            (audio?.canPlayType(WEB_AUDIO_MIME_TYPES[format]) ?? '') !== ''
         );
 
+        if (requestId !== requestGeneration.current) return;
         setCapabilities({
           supportedFormats,
           missingCodecs: WEB_AUDIO_FORMATS.filter(
@@ -192,14 +252,21 @@ export function useAudioCapabilities() {
         });
       }
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (requestId === requestGeneration.current) {
+        setError(getErrorMessage(err));
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === requestGeneration.current) {
+        setIsLoading(false);
+      }
     }
   }, [client]);
 
   useEffect(() => {
     refreshCapabilities();
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, [refreshCapabilities]);
 
   return {
@@ -221,26 +288,39 @@ export function useProxyStatus(options?: AudioProxyOptions) {
   const [error, setError] = useState<string | null>(null);
   const [proxyUrl, setProxyUrl] = useState<string>('');
 
-  const client = useMemo(() => new AudioProxyClient(options), [options]);
+  const stableOptions = useStableAudioProxyOptions(options);
+  const client = useMemo(
+    () => new AudioProxyClient(stableOptions),
+    [stableOptions]
+  );
+  const requestGeneration = useRef(0);
 
   const checkProxy = useCallback(async () => {
+    const requestId = ++requestGeneration.current;
     setIsChecking(true);
     setError(null);
 
     try {
       const available = await client.isProxyAvailable();
+      if (requestId !== requestGeneration.current) return;
       setIsAvailable(available);
       setProxyUrl(client.getProxyUrl());
     } catch (err) {
+      if (requestId !== requestGeneration.current) return;
       setError(getErrorMessage(err));
       setIsAvailable(false);
     } finally {
-      setIsChecking(false);
+      if (requestId === requestGeneration.current) {
+        setIsChecking(false);
+      }
     }
   }, [client]);
 
   useEffect(() => {
     checkProxy();
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, [checkProxy]);
 
   return {
@@ -277,6 +357,7 @@ export function useAudioMetadata(filePath: string | null) {
       return;
     }
 
+    let cancelled = false;
     const getMetadata = async () => {
       setIsLoading(true);
       setError(null);
@@ -288,20 +369,25 @@ export function useAudioMetadata(filePath: string | null) {
 
         if (service) {
           const result = await service.getAudioMetadata(filePath);
-          setMetadata(result);
+          if (!cancelled) setMetadata(result);
         } else {
-          setError(
-            'Audio metadata extraction is only available in Tauri or Electron environments'
-          );
+          if (!cancelled) {
+            setError(
+              'Audio metadata extraction is only available in Tauri or Electron environments'
+            );
+          }
         }
       } catch (err) {
-        setError(getErrorMessage(err));
+        if (!cancelled) setError(getErrorMessage(err));
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     getMetadata();
+    return () => {
+      cancelled = true;
+    };
   }, [filePath, client]);
 
   return {
@@ -329,14 +415,15 @@ export function AudioProxyProvider({
   children: ReactNode;
   options?: AudioProxyOptions;
 }) {
-  const client = useMemo(() => new AudioProxyClient(options), [options]);
+  const stableOptions = useStableAudioProxyOptions(options);
+  const client = useOwnedAudioProxyClient(stableOptions);
 
   const value = useMemo(
     () => ({
-      defaultOptions: options,
+      defaultOptions: stableOptions ?? {},
       client,
     }),
-    [options, client]
+    [stableOptions, client]
   );
 
   return createElement(AudioProxyContext.Provider, { value }, children);

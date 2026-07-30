@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "jsx": "react-jsx",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": [
+    "examples/browser-radio-player.ts",
+    "examples/electron-renderer.ts",
+    "examples/react-example.tsx"
+  ]
+}

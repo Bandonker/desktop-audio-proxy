@@ -63,6 +63,14 @@ describe('AudioProxyClient', () => {
       expect(testClient.getEnvironment()).toBe('tauri');
     });
 
+    it('should honor disabled environment auto-detection', () => {
+      (global as GlobalMock).window = {
+        __TAURI__: { tauri: { convertFileSrc: jest.fn() } },
+      };
+      const testClient = new AudioProxyClient({ autoDetect: false });
+      expect(testClient.getEnvironment()).toBe('unknown');
+    });
+
     it('should detect Electron environment via electronAPI', () => {
       (global as GlobalMock).window = { electronAPI: {} };
       const testClient = new AudioProxyClient();
@@ -88,7 +96,7 @@ describe('AudioProxyClient', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ status: 'healthy' }),
+        json: () => Promise.resolve({ status: 'ok' }),
       } as Response);
 
       const isAvailable = await client.isProxyAvailable();
@@ -125,7 +133,7 @@ describe('AudioProxyClient', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ status: 'healthy' }),
+        json: () => Promise.resolve({ status: 'ok' }),
       } as Response);
 
       const isAvailable = await client.isProxyAvailable();
@@ -153,9 +161,7 @@ describe('AudioProxyClient', () => {
     });
 
     it('should return original URL when proxy is not available', async () => {
-      // Mock health check failure for canPlayUrl
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
-      // Mock health check failures for retry in getPlayableUrl
+      // Mock health check failures for the configured retries
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
@@ -166,32 +172,11 @@ describe('AudioProxyClient', () => {
     });
 
     it('should return proxy URL when proxy is available', async () => {
-      // Mock health check for canPlayUrl call
+      // One successful health check is enough to generate the proxy URL.
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ status: 'healthy' }),
-      } as Response);
-
-      // Mock stream info call
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            url: 'https://example.com/audio.mp3',
-            status: 200,
-            headers: {},
-            canPlay: true,
-            requiresProxy: true,
-          }),
-      } as Response);
-
-      // Mock health check for getPlayableUrl retry logic
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ status: 'healthy' }),
+        json: () => Promise.resolve({ status: 'ok' }),
       } as Response);
 
       const originalUrl = 'https://example.com/audio.mp3';
@@ -199,6 +184,40 @@ describe('AudioProxyClient', () => {
 
       const expectedProxyUrl = `http://localhost:3001/proxy?url=${encodeURIComponent(originalUrl)}`;
       expect(result).toBe(expectedProxyUrl);
+    });
+
+    it('should not auto-start after shutdown begins during a health check', async () => {
+      delete (global as GlobalMock).window;
+      const shutdownClient = new AudioProxyClient({
+        proxyUrl: 'http://localhost:3001',
+        autoDetect: false,
+        autoStartProxy: true,
+        fallbackToOriginal: true,
+        retryAttempts: 1,
+      });
+      let resolveHealthCheck: ((available: boolean) => void) | undefined;
+      jest.spyOn(shutdownClient, 'isProxyAvailable').mockReturnValueOnce(
+        new Promise<boolean>(resolve => {
+          resolveHealthCheck = resolve;
+        })
+      );
+      const startProxySpy = jest
+        .spyOn(
+          shutdownClient as unknown as {
+            startProxyServer: () => Promise<boolean>;
+          },
+          'startProxyServer'
+        )
+        .mockResolvedValue(true);
+      const mediaUrl = 'https://example.com/live.mp3';
+
+      const conversion = shutdownClient.getPlayableUrl(mediaUrl);
+      await Promise.resolve();
+      await shutdownClient.stopProxyServer();
+      resolveHealthCheck?.(false);
+
+      await expect(conversion).resolves.toBe(mediaUrl);
+      expect(startProxySpy).not.toHaveBeenCalled();
     });
 
     it('should handle file:// URLs directly', async () => {
@@ -214,6 +233,24 @@ describe('AudioProxyClient', () => {
       const result = await client.getPlayableUrl(fileUrl);
 
       expect(result).toBe(fileUrl);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should convert Windows UNC paths through the Tauri asset protocol', async () => {
+      const convertFileSrc = jest.fn(
+        (filePath: string) =>
+          `asset://localhost/${encodeURIComponent(filePath)}`
+      );
+      (global as GlobalMock).window = {
+        __TAURI__: { tauri: { convertFileSrc } },
+      };
+      const tauriClient = new AudioProxyClient();
+      const fileUrl = '\\\\media-server\\radio\\sample.mp3';
+
+      const result = await tauriClient.getPlayableUrl(fileUrl);
+
+      expect(convertFileSrc).toHaveBeenCalledWith(fileUrl);
+      expect(result).toBe(`asset://localhost/${encodeURIComponent(fileUrl)}`);
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
@@ -266,7 +303,7 @@ describe('AudioProxyClient', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ status: 'healthy' }),
+            json: () => Promise.resolve({ status: 'ok' }),
           } as Response);
         } else {
           // Second call: stream info
@@ -324,7 +361,7 @@ describe('AudioProxyClient', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ status: 'healthy' }),
+            json: () => Promise.resolve({ status: 'ok' }),
           } as Response);
         } else {
           // Second call: stream info
@@ -353,11 +390,18 @@ describe('AudioProxyClient', () => {
       expect(streamInfo.status).toBe(200);
     });
 
-    it('should return false for invalid URLs', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+    it('should reject invalid URLs before any proxy request', async () => {
+      await expect(client.canPlayUrl('invalid-url')).rejects.toThrow(
+        'Media URL must be an absolute HTTP URL'
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
 
-      const streamInfo = await client.canPlayUrl('invalid-url');
-      expect(streamInfo.canPlay).toBe(false);
+    it('should reject unsafe remote protocols even when fallback is enabled', async () => {
+      await expect(
+        client.getPlayableUrl('javascript:alert(document.domain)')
+      ).rejects.toThrow('Remote media URLs must use http or https');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -374,6 +418,50 @@ describe('AudioProxyClient', () => {
       });
 
       expect(customClient).toBeDefined();
+    });
+
+    it.each([
+      [{ retryAttempts: 0 }, 'retryAttempts'],
+      [{ retryAttempts: 1.5 }, 'retryAttempts'],
+      [{ retryDelay: -1 }, 'retryDelay'],
+    ])('should reject invalid configuration %p', (options, message) => {
+      expect(() => new AudioProxyClient(options)).toThrow(message);
+    });
+
+    it('should reject unsafe proxy origins', () => {
+      expect(
+        () => new AudioProxyClient({ proxyUrl: 'file:///tmp/proxy' })
+      ).toThrow('http or https');
+      expect(
+        () =>
+          new AudioProxyClient({
+            proxyUrl: 'http://user:secret@localhost:3002',
+          })
+      ).toThrow('must not contain credentials');
+    });
+  });
+
+  describe('Telemetry privacy', () => {
+    it('redacts remote paths and query values from emitted events', async () => {
+      const events: unknown[] = [];
+      const telemetryClient = new AudioProxyClient({
+        retryAttempts: 1,
+        fallbackToOriginal: true,
+        telemetry: {
+          enabled: true,
+          onEvent: event => events.push(event),
+        },
+      });
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      await telemetryClient.getPlayableUrl(
+        'https://media.example/private/user-123/audio.mp3?signature=secret'
+      );
+
+      const serializedEvents = JSON.stringify(events);
+      expect(serializedEvents).not.toContain('user-123');
+      expect(serializedEvents).not.toContain('secret');
+      expect(serializedEvents).toContain('[redacted-path]');
     });
   });
 });

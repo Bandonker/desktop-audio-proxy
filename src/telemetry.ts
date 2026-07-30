@@ -25,7 +25,12 @@ export class TelemetryManager {
       data,
     };
 
-    this.options.onEvent(event);
+    try {
+      this.options.onEvent(event);
+    } catch {
+      // Observability callbacks must never change application behavior.
+      console.warn('[AudioProxyTelemetry] Event callback failed');
+    }
   }
 
   public startPerformanceTracking(label: string): void {
@@ -40,7 +45,7 @@ export class TelemetryManager {
     if (!this.options.enabled || !this.options.trackPerformance) return null;
 
     const startTime = this.performanceMarks.get(label);
-    if (!startTime) return null;
+    if (startTime === undefined) return null;
 
     const duration = Date.now() - startTime;
     this.performanceMarks.delete(label);

@@ -81,6 +81,9 @@ export class ElectronAudioService {
   }
 
   private getElectronAPI(): ElectronAPI | undefined {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
     return window.electronAPI as ElectronAPI | undefined;
   }
 
@@ -91,7 +94,7 @@ export class ElectronAudioService {
     electronVersion?: string;
     chromiumVersion?: string;
   }> {
-    const audio = new Audio();
+    const audio = typeof Audio === 'undefined' ? null : new Audio();
 
     const supportedFormats: string[] = [];
     const missingCodecs: string[] = [];
@@ -102,7 +105,7 @@ export class ElectronAudioService {
       let isSupported = false;
 
       // Test basic MIME type
-      const basicSupport = audio.canPlayType(format.mime);
+      const basicSupport = audio?.canPlayType(format.mime) ?? '';
       capabilities[`${format.name}_basic`] = basicSupport;
 
       if (isSupportedResult(basicSupport)) {
@@ -112,9 +115,8 @@ export class ElectronAudioService {
 
       // Test with codecs
       for (const codec of format.codecs) {
-        const codecSupport = audio.canPlayType(
-          `${format.mime}; codecs="${codec}"`
-        );
+        const codecSupport =
+          audio?.canPlayType(`${format.mime}; codecs="${codec}"`) ?? '';
         capabilities[`${format.name}_${codec}`] = codecSupport;
 
         if (codecSupport === 'probably') {

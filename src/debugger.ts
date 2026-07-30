@@ -41,7 +41,7 @@ class AudioProxyDebugger {
     this.options = {
       enabled: options.enabled ?? false,
       level: options.level ?? 'info',
-      categories: options.categories ?? [],
+      categories: [...(options.categories ?? [])],
       timestamp: options.timestamp ?? true,
       stackTrace: options.stackTrace ?? false,
       onLog: options.onLog ?? (() => {}),
@@ -57,7 +57,7 @@ class AudioProxyDebugger {
   }
 
   public setCategories(categories: LogCategory[]): void {
-    this.options.categories = categories;
+    this.options.categories = [...categories];
   }
 
   private shouldLog(level: LogLevel, category: LogCategory): boolean {
@@ -119,7 +119,12 @@ class AudioProxyDebugger {
     }
 
     // Call custom handler
-    this.options.onLog(entry);
+    try {
+      this.options.onLog({ ...entry });
+    } catch {
+      // Debug observers must not interrupt the operation being diagnosed.
+      console.warn('[AudioProxyDebugger] Log callback failed');
+    }
 
     // Console output
     this.logToConsole(entry);
@@ -171,7 +176,7 @@ class AudioProxyDebugger {
       filtered = filtered.filter(log => log.timestamp >= filter.since!);
     }
 
-    return filtered;
+    return filtered.map(log => ({ ...log }));
   }
 
   public clearLogs(): void {

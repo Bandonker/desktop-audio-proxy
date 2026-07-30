@@ -1,20 +1,30 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import axios, { AxiosResponse } from 'axios';
-import { Readable } from 'stream';
-import { createServer, isIP } from 'net';
-import { Server as HttpServer } from 'http';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { Readable, Transform } from 'stream';
+import { lookup as systemLookup, LookupAddress } from 'dns';
+import { BlockList, isIP, LookupFunction } from 'net';
+import { Agent as HttpAgent, Server as HttpServer } from 'http';
+import { Agent as HttpsAgent } from 'https';
+import { createBrotliDecompress, createGunzip, createInflate } from 'zlib';
 import { ProxyConfig } from './types';
 
 const DEFAULT_PORT = 3002;
 const DEFAULT_HOST = 'localhost';
 const DEFAULT_TIMEOUT = 60000;
 const DEFAULT_MAX_REDIRECTS = 10;
-const DEFAULT_USER_AGENT = 'AudioProxy/1.0';
+const PACKAGE_VERSION = '1.1.8';
+const DEFAULT_USER_AGENT = `AudioProxy/${PACKAGE_VERSION}`;
 const DEFAULT_ALLOWED_PROTOCOLS: Array<'http' | 'https'> = ['http', 'https'];
 const DEFAULT_CACHE_TTL = 3600;
-const DEFAULT_ACCEPT_HEADER = 'audio/*,*/*;q=0.1';
+const DEFAULT_MAX_CACHE_ENTRIES = 256;
+const DEFAULT_ACCEPT_HEADER =
+  'audio/*,video/*,application/vnd.apple.mpegurl,application/x-mpegURL,*/*;q=0.1';
 const DEFAULT_ACCEPT_LANGUAGE_HEADER = 'en-US,en;q=0.9';
+const MAX_HLS_PLAYLIST_BYTES = 2 * 1024 * 1024;
+const MAX_HLS_VARIABLE_CONTEXT_BYTES = 16 * 1024;
+const MAX_HLS_VARIABLE_COUNT = 128;
+const MAX_HLS_VARIABLE_EXPANSION_CHARS = 16 * 1024;
 
 const CORS_EXPOSED_HEADERS = [
   'Content-Length',
@@ -28,6 +38,7 @@ const PROXIED_RESPONSE_HEADERS = [
   'content-type',
   'content-length',
   'content-range',
+  'content-encoding',
   'accept-ranges',
   'cache-control',
   'expires',
@@ -36,6 +47,9 @@ const PROXIED_RESPONSE_HEADERS = [
 ];
 
 type ErrorContext = 'info' | 'proxy';
+type ResolvedProxyConfig = Omit<Required<ProxyConfig>, 'allowedHosts'> & {
+  allowedHosts: string[] | null;
+};
 
 interface NormalizedError {
   status: number;
@@ -69,8 +83,773 @@ interface RequestUrlValidationResult {
   message?: string;
 }
 
+interface RedirectRequestOptions {
+  protocol?: string;
+  hostname?: string;
+  host?: string;
+  auth?: string | null;
+}
+
+type LookupResolver = (
+  hostname: string,
+  options: { all: true; verbatim: true },
+  callback: (
+    error: NodeJS.ErrnoException | null,
+    addresses: LookupAddress[]
+  ) => void
+) => void;
+
+const NON_PUBLIC_IPV4 = new BlockList();
+[
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.0.0.0', 24],
+  ['192.0.2.0', 24],
+  ['192.88.99.0', 24],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['198.51.100.0', 24],
+  ['203.0.113.0', 24],
+  ['224.0.0.0', 4],
+  ['240.0.0.0', 4],
+].forEach(([address, prefix]) => {
+  NON_PUBLIC_IPV4.addSubnet(address as string, prefix as number, 'ipv4');
+});
+
+const NON_PUBLIC_IPV6 = new BlockList();
+[
+  ['::', 128],
+  ['::1', 128],
+  ['::ffff:0:0', 96],
+  ['64:ff9b::', 96],
+  ['100::', 64],
+  ['2001::', 32],
+  ['2001:2::', 48],
+  ['2001:10::', 28],
+  ['2001:20::', 28],
+  ['2001:db8::', 32],
+  ['2002::', 16],
+  ['3fff::', 20],
+  ['fc00::', 7],
+  ['fe80::', 10],
+  ['ff00::', 8],
+].forEach(([address, prefix]) => {
+  NON_PUBLIC_IPV6.addSubnet(address as string, prefix as number, 'ipv6');
+});
+
+function normalizeIpAddress(address: string): string {
+  const withoutBrackets =
+    address.startsWith('[') && address.endsWith(']')
+      ? address.slice(1, -1)
+      : address;
+  return withoutBrackets.split('%', 1)[0].toLowerCase();
+}
+
+export function isPublicAddress(address: string): boolean {
+  const normalizedAddress = normalizeIpAddress(address);
+  const ipVersion = isIP(normalizedAddress);
+
+  if (ipVersion === 4) {
+    return !NON_PUBLIC_IPV4.check(normalizedAddress, 'ipv4');
+  }
+
+  if (ipVersion === 6) {
+    const firstGroup = Number.parseInt(normalizedAddress.split(':', 1)[0], 16);
+    const isGlobalUnicast =
+      Number.isFinite(firstGroup) &&
+      firstGroup >= 0x2000 &&
+      firstGroup <= 0x3fff;
+
+    return isGlobalUnicast && !NON_PUBLIC_IPV6.check(normalizedAddress, 'ipv6');
+  }
+
+  return false;
+}
+
+function createNetworkPolicyError(message: string): NodeJS.ErrnoException {
+  const error = new Error(message) as NodeJS.ErrnoException;
+  error.code = 'EPRIVATEADDRESS';
+  return error;
+}
+
+const HLS_VARIABLE_NAME_REGEX = /^[A-Za-z0-9_-]+$/;
+const HLS_VARIABLE_REFERENCE_REGEX = /\{\$([A-Za-z0-9_-]+)\}/g;
+
+function encodeHlsVariableTemplate(value: string): string {
+  return encodeURIComponent(value).replace(
+    /%7B%24([A-Za-z0-9_-]+)%7D/gi,
+    (_match, name: string) => `{$${name}}`
+  );
+}
+
+function createHlsVariableExpansionError(
+  reason: string
+): NodeJS.ErrnoException {
+  const error = new Error(
+    `HLS variable expansion exceeded safe limits: ${reason}`
+  ) as NodeJS.ErrnoException;
+  error.code = 'EHLSVARIABLEEXPANSION';
+  return error;
+}
+
+function replaceKnownHlsVariablesBounded(
+  value: string,
+  definitions: ReadonlyMap<string, string>
+): { value: string; replaced: boolean } {
+  const referenceRegex = new RegExp(HLS_VARIABLE_REFERENCE_REGEX.source, 'g');
+  const chunks: string[] = [];
+  let cursor = 0;
+  let outputLength = 0;
+  let replaced = false;
+  let match: RegExpExecArray | null;
+
+  while ((match = referenceRegex.exec(value)) !== null) {
+    const replacement = definitions.get(match[1]);
+    if (replacement === undefined) {
+      continue;
+    }
+
+    replaced = true;
+    const prefixLength = match.index - cursor;
+    if (
+      outputLength + prefixLength + replacement.length >
+      MAX_HLS_VARIABLE_EXPANSION_CHARS
+    ) {
+      throw createHlsVariableExpansionError('expanded value is too large');
+    }
+    chunks.push(value.slice(cursor, match.index), replacement);
+    outputLength += prefixLength + replacement.length;
+    cursor = match.index + match[0].length;
+  }
+
+  if (!replaced) {
+    return { value, replaced: false };
+  }
+
+  const suffixLength = value.length - cursor;
+  if (outputLength + suffixLength > MAX_HLS_VARIABLE_EXPANSION_CHARS) {
+    throw createHlsVariableExpansionError('expanded value is too large');
+  }
+  chunks.push(value.slice(cursor));
+  return { value: chunks.join(''), replaced: true };
+}
+
+function expandKnownHlsVariables(
+  value: string,
+  definitions: ReadonlyMap<string, string>
+): string {
+  let expanded = value;
+  const seenValues = new Set<string>([expanded]);
+  for (let pass = 0; pass <= definitions.size; pass += 1) {
+    const result = replaceKnownHlsVariablesBounded(expanded, definitions);
+    if (!result.replaced) {
+      return expanded;
+    }
+    if (result.value === expanded || seenValues.has(result.value)) {
+      throw createHlsVariableExpansionError(
+        'cyclic variable definitions are not supported'
+      );
+    }
+    seenValues.add(result.value);
+    expanded = result.value;
+  }
+
+  throw createHlsVariableExpansionError(
+    'variable resolution depth was exceeded'
+  );
+}
+
+function setHlsVariableDefinition(
+  definitions: Map<string, string>,
+  name: string,
+  value: string
+): void {
+  if (!definitions.has(name) && definitions.size >= MAX_HLS_VARIABLE_COUNT) {
+    throw createHlsVariableExpansionError(
+      `more than ${MAX_HLS_VARIABLE_COUNT} definitions were provided`
+    );
+  }
+  definitions.set(name, value);
+}
+
+function encodeHlsVariableContext(
+  definitions: ReadonlyMap<string, string>
+): string | undefined {
+  if (definitions.size === 0) {
+    return undefined;
+  }
+  if (definitions.size > MAX_HLS_VARIABLE_COUNT) {
+    throw createHlsVariableExpansionError(
+      `more than ${MAX_HLS_VARIABLE_COUNT} definitions were provided`
+    );
+  }
+
+  const entries = Array.from(definitions, ([name, value]) => [
+    name,
+    expandKnownHlsVariables(value, definitions),
+  ]);
+  const serialized = JSON.stringify(entries);
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_HLS_VARIABLE_CONTEXT_BYTES) {
+    throw createHlsVariableExpansionError(
+      'serialized variable context is too large'
+    );
+  }
+
+  return Buffer.from(serialized, 'utf8').toString('base64');
+}
+
+function decodeHlsVariableContext(value: unknown): Map<string, string> | null {
+  if (value === undefined) {
+    return new Map();
+  }
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > Math.ceil((MAX_HLS_VARIABLE_CONTEXT_BYTES * 4) / 3) + 4 ||
+    value.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
+  ) {
+    return null;
+  }
+
+  try {
+    const decoded = Buffer.from(value, 'base64').toString('utf8');
+    if (Buffer.byteLength(decoded, 'utf8') > MAX_HLS_VARIABLE_CONTEXT_BYTES) {
+      return null;
+    }
+    const entries: unknown = JSON.parse(decoded);
+    if (!Array.isArray(entries) || entries.length > MAX_HLS_VARIABLE_COUNT) {
+      return null;
+    }
+
+    const definitions = new Map<string, string>();
+    for (const entry of entries) {
+      if (
+        !Array.isArray(entry) ||
+        entry.length !== 2 ||
+        typeof entry[0] !== 'string' ||
+        !HLS_VARIABLE_NAME_REGEX.test(entry[0]) ||
+        typeof entry[1] !== 'string'
+      ) {
+        return null;
+      }
+      definitions.set(entry[0], entry[1]);
+    }
+    return definitions;
+  } catch {
+    return null;
+  }
+}
+
+function appendHlsVariableContext(
+  proxyReference: string,
+  variableContext: string | undefined
+): string {
+  return variableContext
+    ? `${proxyReference}&hlsvars=${encodeURIComponent(variableContext)}`
+    : proxyReference;
+}
+
+function toProxiedPlaylistReference(
+  reference: string,
+  baseUrl: string,
+  definitions: ReadonlyMap<string, string>,
+  variableContext: string | undefined
+): string {
+  const expandedReference = expandKnownHlsVariables(reference, definitions);
+  if (/^\{\$[A-Za-z0-9_-]+\}/.test(expandedReference)) {
+    return appendHlsVariableContext(
+      `/proxy?base=${encodeURIComponent(
+        baseUrl
+      )}&reference=${encodeHlsVariableTemplate(expandedReference)}`,
+      variableContext
+    );
+  }
+
+  const unresolvedVariables: Array<{
+    placeholder: string;
+    reference: string;
+  }> = [];
+  let placeholderIndex = 0;
+  const protectedReference = expandedReference.replace(
+    HLS_VARIABLE_REFERENCE_REGEX,
+    variableReference => {
+      let placeholder: string;
+      do {
+        placeholder = `daphlsvariable${placeholderIndex}marker`;
+        placeholderIndex += 1;
+      } while (
+        expandedReference.includes(placeholder) ||
+        baseUrl.includes(placeholder)
+      );
+      unresolvedVariables.push({
+        placeholder,
+        reference: variableReference,
+      });
+      return placeholder;
+    }
+  );
+
+  try {
+    const resolved = new URL(protectedReference, baseUrl);
+    if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
+      return reference;
+    }
+    let encodedUrl = encodeURIComponent(resolved.toString());
+    for (const variable of unresolvedVariables) {
+      encodedUrl = encodedUrl
+        .split(encodeURIComponent(variable.placeholder))
+        .join(variable.reference);
+    }
+    return appendHlsVariableContext(
+      `/proxy?url=${encodedUrl}`,
+      variableContext
+    );
+  } catch {
+    return reference;
+  }
+}
+
+function getHlsQuotedAttribute(
+  attributeList: string,
+  name: 'NAME' | 'VALUE' | 'QUERYPARAM' | 'IMPORT'
+): string | undefined {
+  return new RegExp(`(?:^|,)${name}="([^"]*)"`).exec(attributeList)?.[1];
+}
+
+function collectHlsVariableDefinitions(
+  lines: readonly string[],
+  baseUrl: string,
+  inheritedDefinitions: ReadonlyMap<string, string>
+): Map<string, string> {
+  const definitions = new Map<string, string>();
+  let baseQuery: URLSearchParams | undefined;
+  try {
+    baseQuery = new URL(baseUrl).searchParams;
+  } catch {
+    baseQuery = undefined;
+  }
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    const prefix = '#EXT-X-DEFINE:';
+    if (!trimmedLine.startsWith(prefix)) {
+      continue;
+    }
+    const attributeList = trimmedLine.slice(prefix.length);
+    const name = getHlsQuotedAttribute(attributeList, 'NAME');
+    const value = getHlsQuotedAttribute(attributeList, 'VALUE');
+    if (name && HLS_VARIABLE_NAME_REGEX.test(name) && value !== undefined) {
+      setHlsVariableDefinition(definitions, name, value);
+      continue;
+    }
+    const queryParameter = getHlsQuotedAttribute(attributeList, 'QUERYPARAM');
+    if (
+      queryParameter &&
+      HLS_VARIABLE_NAME_REGEX.test(queryParameter) &&
+      baseQuery?.has(queryParameter)
+    ) {
+      setHlsVariableDefinition(
+        definitions,
+        queryParameter,
+        baseQuery.get(queryParameter) ?? ''
+      );
+      continue;
+    }
+    const importedName = getHlsQuotedAttribute(attributeList, 'IMPORT');
+    if (
+      importedName &&
+      HLS_VARIABLE_NAME_REGEX.test(importedName) &&
+      inheritedDefinitions.has(importedName)
+    ) {
+      setHlsVariableDefinition(
+        definitions,
+        importedName,
+        inheritedDefinitions.get(importedName) ?? ''
+      );
+    }
+  }
+  return definitions;
+}
+
+export function isHostAllowed(
+  hostname: string,
+  allowedHosts: string[]
+): boolean {
+  const normalizedHostname = normalizeIpAddress(
+    hostname.trim().toLowerCase().replace(/\.$/, '')
+  );
+
+  return allowedHosts.some(entry => {
+    const pattern = entry.trim().toLowerCase().replace(/\.$/, '');
+    if (pattern.startsWith('*.')) {
+      const suffix = pattern.slice(2);
+      return (
+        normalizedHostname !== suffix &&
+        normalizedHostname.endsWith(`.${suffix}`)
+      );
+    }
+    return normalizedHostname === normalizeIpAddress(pattern);
+  });
+}
+
+function isValidAllowedHostPattern(entry: string): boolean {
+  const pattern = entry.trim().toLowerCase().replace(/\.$/, '');
+  const wildcard = pattern.startsWith('*.');
+  const hostname = wildcard ? pattern.slice(2) : pattern;
+
+  if (!hostname || hostname.includes('*')) {
+    return false;
+  }
+
+  const unwrappedAddress =
+    hostname.startsWith('[') && hostname.endsWith(']')
+      ? hostname.slice(1, -1)
+      : hostname;
+  const ipVersion = isIP(unwrappedAddress);
+  if (ipVersion !== 0) {
+    return !wildcard;
+  }
+
+  if (hostname.length > 253) {
+    return false;
+  }
+
+  return hostname.split('.').every(label => {
+    return (
+      label.length >= 1 &&
+      label.length <= 63 &&
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+    );
+  });
+}
+
+function isLikelyHlsPlaylistReference(reference: string): boolean {
+  return /\.m3u8(?:$|[?#])/i.test(reference);
+}
+
+function hlsTagReferencesPlaylist(tag: string): boolean {
+  return (
+    tag.startsWith('#EXT-X-MEDIA:') ||
+    tag.startsWith('#EXT-X-I-FRAME-STREAM-INF:') ||
+    tag.startsWith('#EXT-X-IMAGE-STREAM-INF:') ||
+    tag.startsWith('#EXT-X-RENDITION-REPORT:')
+  );
+}
+
+export function rewriteHlsPlaylist(
+  playlist: string,
+  baseUrl: string,
+  inheritedDefinitions: ReadonlyMap<string, string> = new Map()
+): string {
+  const lines = playlist.split(/\r?\n/);
+  const definitions = collectHlsVariableDefinitions(
+    lines,
+    baseUrl,
+    inheritedDefinitions
+  );
+  const variableContext = encodeHlsVariableContext(definitions);
+  let nextReferenceIsPlaylist = false;
+  return lines
+    .map(line => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) {
+        return line;
+      }
+
+      if (trimmedLine.startsWith('#')) {
+        if (trimmedLine.startsWith('#EXT-X-STREAM-INF:')) {
+          nextReferenceIsPlaylist = true;
+        }
+        const tagVariableContext = hlsTagReferencesPlaylist(trimmedLine)
+          ? variableContext
+          : undefined;
+        return line.replace(
+          /URI="([^"]+)"/g,
+          (_match, reference: string) =>
+            `URI="${toProxiedPlaylistReference(
+              reference,
+              baseUrl,
+              definitions,
+              tagVariableContext
+            )}"`
+        );
+      }
+
+      const leadingWhitespace = line.slice(
+        0,
+        line.length - line.trimStart().length
+      );
+      const trailingWhitespace = line.slice(line.trimEnd().length);
+      const referenceVariableContext =
+        nextReferenceIsPlaylist || isLikelyHlsPlaylistReference(trimmedLine)
+          ? variableContext
+          : undefined;
+      nextReferenceIsPlaylist = false;
+      return (
+        leadingWhitespace +
+        toProxiedPlaylistReference(
+          trimmedLine,
+          baseUrl,
+          definitions,
+          referenceVariableContext
+        ) +
+        trailingWhitespace
+      );
+    })
+    .join('\n');
+}
+
+function isHlsPlaylist(url: string, contentType: unknown): boolean {
+  const normalizedContentType =
+    typeof contentType === 'string' ? contentType.toLowerCase() : '';
+  if (
+    normalizedContentType.includes('mpegurl') ||
+    normalizedContentType.includes('vnd.apple.mpegurl')
+  ) {
+    return true;
+  }
+
+  try {
+    return new URL(url).pathname.toLowerCase().endsWith('.m3u8');
+  } catch {
+    return false;
+  }
+}
+
+function getHeaderString(value: unknown): string | undefined {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    const firstValue = value.find(item => typeof item === 'string');
+    return typeof firstValue === 'string' ? firstValue : undefined;
+  }
+  return undefined;
+}
+
+type HlsContentDecoder = Transform;
+
+interface DecodedHlsPlaylistStream {
+  stream: Readable;
+  destroy: () => void;
+}
+
+function createUnsupportedHlsContentEncodingError(): NodeJS.ErrnoException {
+  const error = new Error(
+    'The upstream HLS playlist uses an unsupported content encoding'
+  ) as NodeJS.ErrnoException;
+  error.code = 'EUNSUPPORTEDHLSENCODING';
+  return error;
+}
+
+function createDecodedHlsPlaylistStream(
+  source: Readable,
+  contentEncoding: unknown
+): DecodedHlsPlaylistStream | null {
+  const normalizedEncodings = getHeaderString(contentEncoding)
+    ?.split(',')
+    .map(encoding => encoding.trim().toLowerCase())
+    .filter(encoding => encoding && encoding !== 'identity');
+  if (!normalizedEncodings?.length) {
+    return {
+      stream: source,
+      destroy: () => {
+        if (!source.destroyed) {
+          source.destroy();
+        }
+      },
+    };
+  }
+  if (
+    normalizedEncodings.some(
+      encoding =>
+        encoding !== 'gzip' &&
+        encoding !== 'x-gzip' &&
+        encoding !== 'deflate' &&
+        encoding !== 'br'
+    )
+  ) {
+    return null;
+  }
+
+  const decoders: HlsContentDecoder[] = [];
+  const errorLinks: Array<{
+    input: Readable;
+    handler: (error: Error) => void;
+  }> = [];
+  let decodedStream = source;
+
+  for (const encoding of [...normalizedEncodings].reverse()) {
+    let decoder: HlsContentDecoder;
+    if (encoding === 'gzip' || encoding === 'x-gzip') {
+      decoder = createGunzip();
+    } else if (encoding === 'deflate') {
+      decoder = createInflate();
+    } else if (encoding === 'br') {
+      decoder = createBrotliDecompress();
+    } else {
+      continue;
+    }
+
+    const input = decodedStream;
+    const forwardError = (error: Error): void => {
+      decoder.destroy(error);
+    };
+    input.once('error', forwardError);
+    errorLinks.push({ input, handler: forwardError });
+    input.pipe(decoder);
+    decoders.push(decoder);
+    decodedStream = decoder;
+  }
+
+  return {
+    stream: decodedStream,
+    destroy: () => {
+      errorLinks.forEach(({ input, handler }) => {
+        input.removeListener('error', handler);
+      });
+      decoders.forEach(decoder => {
+        if (!decoder.destroyed) {
+          decoder.destroy();
+        }
+      });
+      if (!source.destroyed) {
+        source.destroy();
+      }
+    },
+  };
+}
+
+function getFinalResponseUrl(
+  response: AxiosResponse,
+  fallbackUrl: string
+): string {
+  return (
+    (
+      response.request as
+        | {
+            res?: { responseUrl?: string };
+          }
+        | undefined
+    )?.res?.responseUrl || fallbackUrl
+  );
+}
+
+function normalizeMediaContentType(
+  url: string,
+  contentType: unknown
+): string | undefined {
+  const upstreamType = getHeaderString(contentType);
+  const baseType = upstreamType?.split(';', 1)[0]?.trim().toLowerCase();
+  if (
+    baseType &&
+    baseType !== 'application/octet-stream' &&
+    baseType !== 'binary/octet-stream' &&
+    baseType !== 'text/plain'
+  ) {
+    return upstreamType;
+  }
+
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname.toLowerCase();
+  } catch {
+    return upstreamType;
+  }
+
+  const mediaTypes: Array<[string, string]> = [
+    ['.m3u8', 'application/vnd.apple.mpegurl'],
+    ['.mp3', 'audio/mpeg'],
+    ['.m4a', 'audio/mp4'],
+    ['.aac', 'audio/aac'],
+    ['.wav', 'audio/wav'],
+    ['.mp4', 'video/mp4'],
+  ];
+  return (
+    mediaTypes.find(([extension]) => pathname.endsWith(extension))?.[1] ||
+    upstreamType
+  );
+}
+
+async function readPlaylist(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+
+  for await (const chunk of stream) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > MAX_HLS_PLAYLIST_BYTES) {
+      const error = new Error(
+        `HLS playlist exceeds ${MAX_HLS_PLAYLIST_BYTES} bytes`
+      ) as NodeJS.ErrnoException;
+      error.code = 'EPLAYLISTTOOLARGE';
+      throw error;
+    }
+    chunks.push(buffer);
+  }
+
+  return Buffer.concat(chunks, totalBytes);
+}
+
+export function createSafeLookup(
+  resolver: LookupResolver = systemLookup as unknown as LookupResolver
+): LookupFunction {
+  return (hostname, options, callback) => {
+    resolver(hostname, { all: true, verbatim: true }, (error, addresses) => {
+      if (error) {
+        callback(error, '', 0);
+        return;
+      }
+
+      const requestedFamily = options.family || 0;
+      const matchingAddresses = requestedFamily
+        ? addresses.filter(address => address.family === requestedFamily)
+        : addresses;
+
+      if (matchingAddresses.length === 0) {
+        const notFoundError = new Error(
+          'Hostname did not resolve to a usable address'
+        ) as NodeJS.ErrnoException;
+        notFoundError.code = 'ENOTFOUND';
+        callback(notFoundError, '', 0);
+        return;
+      }
+
+      if (
+        matchingAddresses.some(address => !isPublicAddress(address.address))
+      ) {
+        callback(
+          createNetworkPolicyError(
+            'Hostname resolved to a private or non-public address'
+          ),
+          '',
+          0
+        );
+        return;
+      }
+
+      if (options.all) {
+        callback(null, matchingAddresses);
+        return;
+      }
+
+      const selectedAddress = matchingAddresses[0];
+      callback(null, selectedAddress.address, selectedAddress.family);
+    });
+  };
+}
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function getSafeErrorSummary(error: unknown): string {
+  return getErrorCode(error) || (error instanceof Error ? error.name : 'Error');
 }
 
 function getProcessUptime(): number {
@@ -87,74 +866,59 @@ function getErrorCode(error: unknown): string | undefined {
   }
 
   const maybeCode = (error as { code?: unknown }).code;
-  return typeof maybeCode === 'string' ? maybeCode : undefined;
-}
-
-// Utility function to check if a port is available
-async function isPortAvailable(
-  port: number,
-  host: string = 'localhost'
-): Promise<boolean> {
-  return new Promise(resolve => {
-    const server = createServer();
-
-    server.listen(port, host, () => {
-      server.close(() => {
-        resolve(true);
-      });
-    });
-
-    server.on('error', () => {
-      resolve(false);
-    });
-  });
-}
-
-// Find the next available port starting from the given port
-async function findAvailablePort(
-  startPort: number,
-  host: string = 'localhost',
-  maxAttempts: number = 10
-): Promise<number> {
-  for (let i = 0; i < maxAttempts; i++) {
-    const port = startPort + i;
-    const available = await isPortAvailable(port, host);
-    if (available) {
-      return port;
-    }
+  if (typeof maybeCode === 'string') {
+    return maybeCode;
   }
-  throw new Error(
-    `No available port found in range ${startPort}-${startPort + maxAttempts - 1}`
-  );
+
+  return getErrorCode((error as { cause?: unknown }).cause);
 }
 
 export class AudioProxyServer {
   private app: express.Application;
   private server: HttpServer | null = null;
-  private config: Required<ProxyConfig>;
+  private startPromise: Promise<void> | null = null;
+  private config: ResolvedProxyConfig;
   private actualPort: number = 0;
   private infoCache: Map<string, CachedInfoEntry> = new Map();
+  private httpAgent: HttpAgent | undefined;
+  private httpsAgent: HttpsAgent | undefined;
 
   constructor(config: ProxyConfig = {}) {
-    const allowedProtocols =
-      config.allowedProtocols && config.allowedProtocols.length > 0
-        ? config.allowedProtocols
-        : DEFAULT_ALLOWED_PROTOCOLS;
+    const allowedProtocols = [
+      ...(config.allowedProtocols ?? DEFAULT_ALLOWED_PROTOCOLS),
+    ];
+    const corsOrigins =
+      typeof config.corsOrigins === 'string'
+        ? config.corsOrigins.trim()
+        : config.corsOrigins?.map(origin => origin.trim());
 
     this.config = {
-      port: config.port || DEFAULT_PORT,
-      host: config.host || DEFAULT_HOST,
-      corsOrigins: config.corsOrigins || '*',
-      timeout: config.timeout || DEFAULT_TIMEOUT,
-      maxRedirects: config.maxRedirects || DEFAULT_MAX_REDIRECTS,
-      userAgent: config.userAgent || DEFAULT_USER_AGENT,
+      port: config.port ?? DEFAULT_PORT,
+      host: config.host?.trim() ?? DEFAULT_HOST,
+      corsOrigins: corsOrigins ?? '*',
+      timeout: config.timeout ?? DEFAULT_TIMEOUT,
+      maxRedirects: config.maxRedirects ?? DEFAULT_MAX_REDIRECTS,
+      userAgent: config.userAgent ?? DEFAULT_USER_AGENT,
       allowedProtocols,
+      allowedHosts:
+        config.allowedHosts === undefined
+          ? null
+          : config.allowedHosts.map(hostname => hostname.trim().toLowerCase()),
       allowPrivateAddresses: config.allowPrivateAddresses ?? false,
       enableLogging: config.enableLogging ?? true,
       enableTranscoding: config.enableTranscoding ?? false,
       cacheEnabled: config.cacheEnabled ?? true,
-      cacheTTL: config.cacheTTL || DEFAULT_CACHE_TTL,
+      cacheTTL: config.cacheTTL ?? DEFAULT_CACHE_TTL,
+      maxCacheEntries: config.maxCacheEntries ?? DEFAULT_MAX_CACHE_ENTRIES,
     };
+
+    this.validateConfig();
+
+    if (!this.config.allowPrivateAddresses) {
+      const safeLookup = createSafeLookup();
+      this.httpAgent = new HttpAgent({ lookup: safeLookup });
+      this.httpsAgent = new HttpsAgent({ lookup: safeLookup });
+    }
 
     this.app = express();
     this.setupMiddleware();
@@ -162,11 +926,13 @@ export class AudioProxyServer {
   }
 
   private setupMiddleware(): void {
+    const allowCredentials = this.config.corsOrigins !== '*';
+
     // CORS middleware
     this.app.use(
       cors({
         origin: this.config.corsOrigins,
-        credentials: true,
+        credentials: allowCredentials,
         exposedHeaders: CORS_EXPOSED_HEADERS,
         methods: CORS_ALLOWED_METHODS,
         allowedHeaders: CORS_ALLOWED_HEADERS,
@@ -183,24 +949,11 @@ export class AudioProxyServer {
   }
 
   private setupRoutes(): void {
-    // Handle CORS preflight for all routes
-    this.app.options('*', (_req: Request, res: Response) => {
-      res.set({
-        'Access-Control-Allow-Origin': this.config.corsOrigins,
-        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-        'Access-Control-Allow-Headers':
-          'Content-Type, Range, Accept-Encoding, User-Agent',
-        'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Max-Age': '86400', // 24 hours
-      });
-      res.status(204).end();
-    });
-
     // Health check endpoint
     this.app.get('/health', (_req: Request, res: Response) => {
       res.json({
         status: 'ok',
-        version: '1.1.7',
+        version: PACKAGE_VERSION,
         uptime: getProcessUptime(),
         config: {
           port: this.actualPort || this.config.port,
@@ -209,6 +962,7 @@ export class AudioProxyServer {
           allowPrivateAddresses: this.config.allowPrivateAddresses,
           enableTranscoding: this.config.enableTranscoding,
           cacheEnabled: this.config.cacheEnabled,
+          maxCacheEntries: this.config.maxCacheEntries,
         },
       });
     });
@@ -242,24 +996,35 @@ export class AudioProxyServer {
           },
           timeout: this.config.timeout,
           maxRedirects: this.config.maxRedirects,
-          validateStatus: (status: number) => status < 400,
+          validateStatus: (status: number) => status >= 200 && status < 300,
+          decompress: false,
+          ...this.getSecureNetworkOptions(),
         });
 
+        const finalUrl = getFinalResponseUrl(response, url);
+        const headers = this.pickProxiedResponseHeaders(response.headers);
+        const normalizedContentType = normalizeMediaContentType(
+          finalUrl,
+          response.headers['content-type']
+        );
+        if (normalizedContentType) {
+          headers['content-type'] = normalizedContentType;
+        }
         const payload: InfoResponsePayload = {
           url,
           status: response.status,
-          headers: response.headers,
-          contentType: response.headers['content-type'],
-          contentLength: response.headers['content-length'],
-          acceptRanges: response.headers['accept-ranges'],
-          lastModified: response.headers['last-modified'],
+          headers,
+          contentType: normalizedContentType,
+          contentLength: getHeaderString(response.headers['content-length']),
+          acceptRanges: getHeaderString(response.headers['accept-ranges']),
+          lastModified: getHeaderString(response.headers['last-modified']),
         };
 
         this.setCachedInfo(url, payload);
 
         return res.json(payload);
       } catch (error: unknown) {
-        console.error('[AudioProxy] Info error:', error);
+        console.error('[AudioProxy] Info error:', getSafeErrorSummary(error));
         const normalizedError = this.normalizeRequestError(error, url, 'info');
         return res.status(normalizedError.status).json(normalizedError.body);
       }
@@ -277,25 +1042,24 @@ export class AudioProxyServer {
         });
       }
       const url = validationResult.url;
+      const inheritedHlsDefinitions = decodeHlsVariableContext(
+        req.query.hlsvars
+      );
+      if (inheritedHlsDefinitions === null) {
+        return res.status(400).json({
+          error: 'Invalid HLS variable context',
+          message: 'Use a proxy URL generated from a trusted parent playlist',
+        });
+      }
 
       try {
-        // Set CORS headers immediately
-        res.set({
-          'Access-Control-Allow-Origin': this.config.corsOrigins,
-          'Access-Control-Allow-Credentials': 'true',
-          'Access-Control-Expose-Headers':
-            'Content-Length, Content-Range, Accept-Ranges',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS, HEAD',
-          'Access-Control-Allow-Headers':
-            'Content-Type, Range, Accept-Encoding',
-        });
-
         // Prepare request headers
         const requestHeaders: Record<string, string> = {
           'User-Agent': this.config.userAgent,
           Accept: req.headers.accept || DEFAULT_ACCEPT_HEADER,
           'Accept-Language':
             req.headers['accept-language'] || DEFAULT_ACCEPT_LANGUAGE_HEADER,
+          'Accept-Encoding': 'identity',
           'Cache-Control': 'no-cache',
           Pragma: 'no-cache',
         };
@@ -307,11 +1071,6 @@ export class AudioProxyServer {
           requestHeaders['Range'] = req.headers.range;
         }
 
-        // Handle encoding
-        if (req.headers['accept-encoding']) {
-          requestHeaders['Accept-Encoding'] = req.headers['accept-encoding'];
-        }
-
         // Use axios for better stream handling
         const response: AxiosResponse = await axios({
           method: 'GET',
@@ -320,22 +1079,85 @@ export class AudioProxyServer {
           responseType: 'stream',
           timeout: this.config.timeout,
           maxRedirects: this.config.maxRedirects,
-          validateStatus: (status: number) => status < 400, // Accept redirects and success codes
+          validateStatus: (status: number) => status >= 200 && status < 300,
           signal: requestAbortController.signal,
+          decompress: false,
+          ...this.getSecureNetworkOptions(),
         });
 
         // Set response status
         res.status(response.status);
 
         // Copy relevant headers from the original response
-        PROXIED_RESPONSE_HEADERS.forEach(header => {
-          const value = response.headers[header];
-          if (value) {
+        const finalUrl = getFinalResponseUrl(response, url);
+        const responseHeaders = this.pickProxiedResponseHeaders(
+          response.headers
+        );
+        const normalizedContentType = normalizeMediaContentType(
+          finalUrl,
+          response.headers['content-type']
+        );
+        if (normalizedContentType) {
+          responseHeaders['content-type'] = normalizedContentType;
+        }
+        Object.entries(responseHeaders).forEach(([header, value]) => {
+          if (typeof value === 'string' || Array.isArray(value)) {
             res.set(header, value);
           }
         });
 
         const stream = response.data as Readable;
+
+        const shouldRewriteHlsPlaylist =
+          isHlsPlaylist(finalUrl, normalizedContentType) &&
+          response.status === 200 &&
+          !req.headers.range;
+        const decodedHlsPlaylist = shouldRewriteHlsPlaylist
+          ? createDecodedHlsPlaylistStream(
+              stream,
+              response.headers['content-encoding']
+            )
+          : null;
+
+        if (shouldRewriteHlsPlaylist && !decodedHlsPlaylist) {
+          requestAbortController.abort();
+          if (!stream.destroyed) {
+            stream.destroy();
+          }
+          throw createUnsupportedHlsContentEncodingError();
+        }
+
+        if (decodedHlsPlaylist) {
+          const abortPlaylistRead = (): void => {
+            requestAbortController.abort();
+            decodedHlsPlaylist.destroy();
+          };
+          req.once('aborted', abortPlaylistRead);
+          res.once('close', abortPlaylistRead);
+
+          try {
+            const playlistBuffer = await readPlaylist(
+              decodedHlsPlaylist.stream
+            );
+            if (res.destroyed || res.writableEnded) {
+              return;
+            }
+            const rewrittenPlaylist = rewriteHlsPlaylist(
+              playlistBuffer.toString('utf8'),
+              finalUrl,
+              inheritedHlsDefinitions
+            );
+            res.removeHeader('content-length');
+            res.removeHeader('content-encoding');
+            return res.send(rewrittenPlaylist);
+          } finally {
+            req.removeListener('aborted', abortPlaylistRead);
+            res.removeListener('close', abortPlaylistRead);
+            requestAbortController.abort();
+            decodedHlsPlaylist.destroy();
+          }
+        }
+
         let cleanedUp = false;
 
         const cleanup = (destroyStream: boolean): void => {
@@ -370,16 +1192,23 @@ export class AudioProxyServer {
         };
 
         const handleResponseError = (error: Error) => {
-          console.error('[AudioProxy] Response error:', error);
+          console.error(
+            '[AudioProxy] Response error:',
+            getSafeErrorSummary(error)
+          );
           cleanup(true);
         };
 
         const handleStreamError = (error: Error) => {
-          console.error('[AudioProxy] Stream error:', error);
+          console.error(
+            '[AudioProxy] Stream error:',
+            getSafeErrorSummary(error)
+          );
           if (this.canSendJsonResponse(res)) {
+            this.clearProxiedResponseHeaders(res);
             res.status(500).json({
               error: 'Stream error',
-              message: error.message,
+              message: 'The upstream stream ended unexpectedly',
             });
           } else if (!res.writableEnded) {
             res.end();
@@ -398,9 +1227,10 @@ export class AudioProxyServer {
         // Return void to satisfy TypeScript strict mode
         return;
       } catch (error: unknown) {
-        console.error('[AudioProxy] Proxy error:', error);
+        console.error('[AudioProxy] Proxy error:', getSafeErrorSummary(error));
 
         if (this.canSendJsonResponse(res)) {
+          this.clearProxiedResponseHeaders(res);
           const normalizedError = this.normalizeRequestError(
             error,
             url,
@@ -418,8 +1248,44 @@ export class AudioProxyServer {
     return !res.headersSent && !res.writableEnded;
   }
 
+  private clearProxiedResponseHeaders(res: Response): void {
+    PROXIED_RESPONSE_HEADERS.forEach(header => res.removeHeader(header));
+  }
+
   private getRequestUrl(req: Request): RequestUrlValidationResult {
-    if (typeof req.query.url !== 'string') {
+    const rawUrl = req.query.url;
+    const rawBase = req.query.base;
+    const rawReference = req.query.reference;
+    let normalizedUrl: string;
+
+    if (typeof rawUrl === 'string') {
+      normalizedUrl = rawUrl.trim();
+    } else if (
+      typeof rawBase === 'string' &&
+      typeof rawReference === 'string'
+    ) {
+      const normalizedBase = rawBase.trim();
+      const normalizedReference = rawReference.trim();
+      if (normalizedBase.length === 0 || normalizedReference.length === 0) {
+        return {
+          valid: false,
+          status: 400,
+          error: 'Invalid URL parameter',
+          message: 'Both base and reference must be non-empty URLs',
+        };
+      }
+
+      try {
+        normalizedUrl = new URL(normalizedReference, normalizedBase).toString();
+      } catch {
+        return {
+          valid: false,
+          status: 400,
+          error: 'Invalid URL parameter',
+          message: 'Provide an absolute URL or a valid base/reference pair',
+        };
+      }
+    } else {
       return {
         valid: false,
         status: 400,
@@ -427,7 +1293,6 @@ export class AudioProxyServer {
       };
     }
 
-    const normalizedUrl = req.query.url.trim();
     if (normalizedUrl.length === 0) {
       return {
         valid: false,
@@ -455,6 +1320,27 @@ export class AudioProxyServer {
         status: 400,
         error: 'Unsupported URL protocol',
         message: `Allowed protocols: ${this.config.allowedProtocols.join(', ')}`,
+      };
+    }
+
+    if (parsedUrl.username || parsedUrl.password) {
+      return {
+        valid: false,
+        status: 400,
+        error: 'URL credentials are not supported',
+        message: 'Use host-managed authentication instead of URL user info',
+      };
+    }
+
+    if (
+      this.config.allowedHosts !== null &&
+      !isHostAllowed(parsedUrl.hostname, this.config.allowedHosts)
+    ) {
+      return {
+        valid: false,
+        status: 403,
+        error: 'Target host is not allowed',
+        message: 'Add the station host to ProxyConfig.allowedHosts',
       };
     }
 
@@ -493,6 +1379,8 @@ export class AudioProxyServer {
       return null;
     }
 
+    this.infoCache.delete(url);
+    this.infoCache.set(url, cachedEntry);
     return cachedEntry.payload;
   }
 
@@ -502,64 +1390,191 @@ export class AudioProxyServer {
     }
 
     const ttlMs = Math.max(1, this.config.cacheTTL) * 1000;
+    const now = Date.now();
+
+    for (const [cachedUrl, cachedEntry] of this.infoCache) {
+      if (cachedEntry.expiresAt <= now) {
+        this.infoCache.delete(cachedUrl);
+      }
+    }
+
+    this.infoCache.delete(url);
+    while (this.infoCache.size >= this.config.maxCacheEntries) {
+      const oldestUrl = this.infoCache.keys().next().value as
+        | string
+        | undefined;
+      if (!oldestUrl) {
+        break;
+      }
+      this.infoCache.delete(oldestUrl);
+    }
+
     this.infoCache.set(url, {
-      expiresAt: Date.now() + ttlMs,
+      expiresAt: now + ttlMs,
       payload,
     });
   }
 
   private isPrivateOrLocalHost(hostname: string): boolean {
-    const normalizedHost = hostname.toLowerCase().replace(/\.$/, '');
+    const normalizedHost = normalizeIpAddress(
+      hostname.toLowerCase().replace(/\.$/, '')
+    );
 
     if (
       normalizedHost === 'localhost' ||
       normalizedHost.endsWith('.localhost') ||
-      normalizedHost.endsWith('.local')
+      normalizedHost.endsWith('.local') ||
+      normalizedHost.endsWith('.localdomain') ||
+      normalizedHost.endsWith('.lan') ||
+      normalizedHost.endsWith('.internal') ||
+      normalizedHost === 'home.arpa' ||
+      normalizedHost.endsWith('.home.arpa')
     ) {
       return true;
     }
 
-    const ipVersion = isIP(normalizedHost);
+    return isIP(normalizedHost) !== 0 && !isPublicAddress(normalizedHost);
+  }
 
-    if (ipVersion === 0) {
-      return false;
+  private validateConfig(): void {
+    if (
+      !Number.isInteger(this.config.port) ||
+      this.config.port < 0 ||
+      this.config.port > 65535
+    ) {
+      throw new RangeError('Proxy port must be an integer between 0 and 65535');
     }
 
-    if (ipVersion === 4) {
-      const octets = normalizedHost.split('.').map(Number);
-      const first = octets[0];
-      const second = octets[1];
+    if (!this.config.host.trim()) {
+      throw new TypeError('Proxy host must not be empty');
+    }
 
-      return (
-        first === 10 ||
-        first === 127 ||
-        first === 0 ||
-        (first === 169 && second === 254) ||
-        (first === 172 && second >= 16 && second <= 31) ||
-        (first === 192 && second === 168)
+    if (
+      typeof this.config.corsOrigins === 'string'
+        ? !this.config.corsOrigins.trim()
+        : this.config.corsOrigins.length === 0 ||
+          this.config.corsOrigins.some(origin => !origin.trim())
+    ) {
+      throw new TypeError('corsOrigins must contain at least one origin');
+    }
+
+    if (
+      this.config.allowedProtocols.length === 0 ||
+      this.config.allowedProtocols.some(
+        protocol => protocol !== 'http' && protocol !== 'https'
+      )
+    ) {
+      throw new TypeError('allowedProtocols may contain only http and https');
+    }
+
+    if (
+      this.config.allowedHosts !== null &&
+      this.config.allowedHosts.some(
+        hostname => !isValidAllowedHostPattern(hostname)
+      )
+    ) {
+      throw new TypeError(
+        'allowedHosts entries must be exact hostnames or *.example.com patterns'
       );
     }
 
-    const compactIpv6 = normalizedHost;
+    if (!Number.isFinite(this.config.timeout) || this.config.timeout <= 0) {
+      throw new RangeError('Proxy timeout must be greater than zero');
+    }
+
     if (
-      compactIpv6 === '::1' ||
-      compactIpv6 === '::' ||
-      compactIpv6.startsWith('fe8') ||
-      compactIpv6.startsWith('fe9') ||
-      compactIpv6.startsWith('fea') ||
-      compactIpv6.startsWith('feb') ||
-      compactIpv6.startsWith('fc') ||
-      compactIpv6.startsWith('fd')
+      !Number.isInteger(this.config.maxRedirects) ||
+      this.config.maxRedirects < 0
     ) {
-      return true;
+      throw new RangeError('maxRedirects must be a non-negative integer');
     }
 
-    if (compactIpv6.startsWith('::ffff:')) {
-      const mappedIpv4 = compactIpv6.slice('::ffff:'.length);
-      return this.isPrivateOrLocalHost(mappedIpv4);
+    if (!Number.isFinite(this.config.cacheTTL) || this.config.cacheTTL <= 0) {
+      throw new RangeError('cacheTTL must be greater than zero');
     }
 
-    return false;
+    if (
+      !Number.isInteger(this.config.maxCacheEntries) ||
+      this.config.maxCacheEntries <= 0
+    ) {
+      throw new RangeError('maxCacheEntries must be a positive integer');
+    }
+
+    if (this.config.enableTranscoding) {
+      throw new TypeError(
+        'enableTranscoding is not implemented; transcode media in the host application'
+      );
+    }
+  }
+
+  private validateRedirect(options: RedirectRequestOptions): void {
+    const protocol = (options.protocol || '').replace(/:$/, '').toLowerCase();
+    if (!this.config.allowedProtocols.includes(protocol as 'http' | 'https')) {
+      throw createNetworkPolicyError('Redirect used an unsupported protocol');
+    }
+
+    if (options.auth) {
+      throw createNetworkPolicyError('Redirect URL credentials are blocked');
+    }
+
+    const hostname = options.hostname || options.host;
+    if (
+      !hostname ||
+      (!this.config.allowPrivateAddresses &&
+        this.isPrivateOrLocalHost(hostname))
+    ) {
+      throw createNetworkPolicyError(
+        'Redirect targeted a private or non-public address'
+      );
+    }
+
+    if (
+      this.config.allowedHosts !== null &&
+      !isHostAllowed(hostname, this.config.allowedHosts)
+    ) {
+      throw createNetworkPolicyError('Redirect target host is not allowed');
+    }
+  }
+
+  private getSecureNetworkOptions(): Pick<
+    AxiosRequestConfig,
+    'httpAgent' | 'httpsAgent' | 'proxy' | 'beforeRedirect'
+  > {
+    if (
+      this.config.allowPrivateAddresses &&
+      this.config.allowedHosts === null
+    ) {
+      return {};
+    }
+
+    const redirectPolicy = {
+      beforeRedirect: (options: RedirectRequestOptions) =>
+        this.validateRedirect(options),
+    };
+
+    if (this.config.allowPrivateAddresses) {
+      return redirectPolicy;
+    }
+
+    return {
+      httpAgent: this.httpAgent,
+      httpsAgent: this.httpsAgent,
+      proxy: false,
+      ...redirectPolicy,
+    };
+  }
+
+  private pickProxiedResponseHeaders(
+    headers: Record<string, unknown>
+  ): Record<string, string> {
+    const safeHeaders: Record<string, string> = {};
+    PROXIED_RESPONSE_HEADERS.forEach(header => {
+      const value = getHeaderString(headers[header]);
+      if (value !== undefined) {
+        safeHeaders[header] = value;
+      }
+    });
+    return safeHeaders;
   }
 
   private normalizeRequestError(
@@ -578,6 +1593,21 @@ export class AudioProxyServer {
       : undefined;
 
     if (axiosError?.response) {
+      if (
+        axiosError.response.status >= 300 &&
+        axiosError.response.status < 400
+      ) {
+        return {
+          status: 502,
+          body: {
+            error: 'Upstream redirect was not followed',
+            message:
+              'Increase maxRedirects or provide the final media URL directly',
+            url,
+          },
+        };
+      }
+
       return {
         status: axiosError.response.status,
         body: {
@@ -626,55 +1656,169 @@ export class AudioProxyServer {
       };
     }
 
+    if (errorCode === 'EPRIVATEADDRESS') {
+      return {
+        status: 403,
+        body: {
+          error: 'Private or non-public addresses are blocked',
+          message: 'The target or one of its redirects failed network policy',
+          url,
+        },
+      };
+    }
+
+    if (errorCode === 'EPLAYLISTTOOLARGE') {
+      return {
+        status: 413,
+        body: {
+          error: 'HLS playlist is too large',
+          message: `Playlist metadata is limited to ${MAX_HLS_PLAYLIST_BYTES} bytes`,
+          url,
+        },
+      };
+    }
+
+    if (errorCode === 'EUNSUPPORTEDHLSENCODING') {
+      return {
+        status: 502,
+        body: {
+          error: 'Unsupported HLS content encoding',
+          message:
+            'The proxy supports identity, gzip, deflate, and Brotli playlist encodings',
+          url,
+        },
+      };
+    }
+
+    if (errorCode === 'EHLSVARIABLEEXPANSION') {
+      return {
+        status: 422,
+        body: {
+          error: 'HLS variable expansion rejected',
+          message: `Variable expansion is limited to ${MAX_HLS_VARIABLE_EXPANSION_CHARS} characters and ${MAX_HLS_VARIABLE_COUNT} definitions`,
+          url,
+        },
+      };
+    }
+
     return {
       status: 500,
       body: {
         error: fallbackError,
-        message: getErrorMessage(error),
+        message: 'Unexpected upstream request failure',
         url,
       },
     };
   }
 
   public async start(): Promise<void> {
-    try {
-      // Find an available port starting from the configured port
-      this.actualPort = await findAvailablePort(
-        this.config.port,
-        this.config.host
-      );
+    if (this.server?.listening) {
+      return;
+    }
 
-      return new Promise((resolve, reject) => {
-        this.server = this.app.listen(this.actualPort, this.config.host, () => {
-          if (this.actualPort !== this.config.port) {
+    if (this.startPromise) {
+      return this.startPromise;
+    }
+
+    const startOperation = this.startInternal();
+    this.startPromise = startOperation;
+
+    try {
+      await startOperation;
+    } finally {
+      if (this.startPromise === startOperation) {
+        this.startPromise = null;
+      }
+    }
+  }
+
+  private async startInternal(): Promise<void> {
+    try {
+      const candidatePorts =
+        this.config.port === 0
+          ? [0]
+          : Array.from(
+              { length: Math.min(10, 65536 - this.config.port) },
+              (_, index) => this.config.port + index
+            );
+
+      let lastError: unknown;
+      for (const candidatePort of candidatePorts) {
+        try {
+          this.server = await this.listen(candidatePort);
+          const address = this.server.address();
+          this.actualPort =
+            address && typeof address !== 'string'
+              ? address.port
+              : candidatePort;
+
+          if (this.config.port !== 0 && this.actualPort !== this.config.port) {
             console.log(
               `⚠️  Port ${this.config.port} was occupied, using port ${this.actualPort} instead`
             );
           }
-          console.log(
-            `Desktop Audio Proxy running on http://${this.config.host}:${this.actualPort}`
-          );
-          console.log(
-            `Use http://${this.config.host}:${this.actualPort}/proxy?url=YOUR_AUDIO_URL`
-          );
-          resolve();
-        });
+          console.log(`Desktop Audio Proxy running on ${this.getProxyUrl()}`);
+          console.log(`Use ${this.getProxyUrl()}/proxy?url=YOUR_AUDIO_URL`);
+          return;
+        } catch (error: unknown) {
+          lastError = error;
+          if (getErrorCode(error) !== 'EADDRINUSE' || candidatePort === 0) {
+            throw error;
+          }
+        }
+      }
 
-        this.server.on('error', (error: Error) => {
-          reject(error);
-        });
-      });
+      throw (
+        lastError ||
+        new Error(
+          `No available port found in range ${this.config.port}-${this.config.port + 9}`
+        )
+      );
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error);
       throw new Error(`Failed to start proxy server: ${errorMessage}`);
     }
   }
 
+  private listen(port: number): Promise<HttpServer> {
+    return new Promise((resolve, reject) => {
+      const server = this.app.listen(port, this.config.host);
+
+      const handleError = (error: Error): void => {
+        server.removeListener('listening', handleListening);
+        reject(error);
+      };
+      const handleListening = (): void => {
+        server.removeListener('error', handleError);
+        resolve(server);
+      };
+
+      server.once('error', handleError);
+      server.once('listening', handleListening);
+    });
+  }
+
   public async stop(): Promise<void> {
-    return new Promise(resolve => {
+    if (this.startPromise) {
+      try {
+        await this.startPromise;
+      } catch {
+        // A failed start has no listening server to close.
+      }
+    }
+
+    return new Promise((resolve, reject) => {
       this.infoCache.clear();
-      if (this.server) {
-        this.server.close(() => {
+      const server = this.server;
+      this.server = null;
+      this.actualPort = 0;
+
+      if (server?.listening) {
+        server.close(error => {
+          if (error) {
+            reject(error);
+            return;
+          }
           console.log('Desktop Audio Proxy stopped');
           resolve();
         });
@@ -689,7 +1833,15 @@ export class AudioProxyServer {
   }
 
   public getProxyUrl(): string {
-    return `http://${this.config.host}:${this.getActualPort()}`;
+    const connectHost =
+      this.config.host === '0.0.0.0' || this.config.host === '::'
+        ? 'localhost'
+        : this.config.host;
+    const formattedHost =
+      connectHost.includes(':') && !connectHost.startsWith('[')
+        ? `[${connectHost}]`
+        : connectHost;
+    return `http://${formattedHost}:${this.getActualPort()}`;
   }
 }
 

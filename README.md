@@ -6,7 +6,7 @@
 
 
 <p align="center" style="font-size:1.1em;">
-  <strong>Bypasses CORS & WebKit codec issues in Tauri and Electron apps with universal audio and video streaming support.</strong>
+  <strong>Provides a local CORS bridge for audio and video playback in Tauri and Electron apps.</strong>
 </p>
 
 <p align="center">
@@ -39,19 +39,19 @@
 
 ## Features
 
-- **CORS Bypass** - Play external audio/video URLs without CORS restrictions
-- **Universal Media Streaming** - Supports audio (MP3, AAC, OGG, WAV) and video (MP4, M3U8/HLS, WebM)
-- **Auto-Start Proxy** - Automatically spin up proxy server when needed (Node.js only)
-- **Tauri v1 & v2 Support** - Works seamlessly with both Tauri versions
-- **Debug Logger** - Multi-level logging with category filtering for troubleshooting
+- **Local CORS Bridge** - Re-serve validated public HTTP(S) media with browser-readable CORS headers
+- **Media Transport Proxy** - Byte-transparent transport for common audio/video responses; decoding remains the host runtime's responsibility
+- **Auto-Start Proxy** - Start the proxy from the package's Node.js entry point when explicitly enabled
+- **Tauri/Electron Adapters** - Browser-side adapters for host-managed proxy processes; native host setup is still required
+- **Debug Utility** - Opt-in in-memory, categorized logging for entries your application writes through the debugger API
 - **Telemetry System** - Optional performance monitoring and event tracking
-- **React/Vue Integration** - Ready-to-use hooks and composables for seamless framework integration
-- **Enhanced Codec Detection** - Comprehensive format testing with real-time capabilities mapping
-- **Media Metadata Extraction** - Get duration, format, bitrate from audio/video files
-- **Audio Device Enumeration** - List and manage available audio devices
-- **WebKit Compatibility** - Solves codec issues in Tauri/Electron WebView
+- **React/Vue Integration** - Hooks and composables with stale-request protection and cleanup
+- **Codec Probing** - `HTMLMediaElement.canPlayType()` checks plus optional host-provided capability data
+- **Optional Native Bridges** - Metadata and device information when your Tauri commands or Electron preload API implement them
+- **WebKit-Aware Source Selection** - Rank typed fallback sources with the current runtime's `canPlayType()` result
+- **WebView Compatibility** - Applies cross-origin, metadata-preload, inline-video, MIME, and range defaults without pretending to transcode
 - **Environment Detection** - Automatically detects Tauri, Electron, or web environment
-- **Smart Fallbacks** - Graceful degradation when proxy unavailable
+- **Explicit Failure Policy** - Low-level direct-URL fallback is configurable; the media-element controller fails closed by default
 - **URL Security Guardrails** - Protocol allowlist and private-network blocking for proxy targets
 - **Actionable Error Messages** - Clear error messages with specific steps to fix issues
 - **Retry Logic** - Configurable retry attempts with delays
@@ -59,60 +59,63 @@
 - **Stream Lifecycle Hardening** - Conservative cleanup for aborted/closed proxy streams
 - **Deterministic Core Tests** - Local upstream mock coverage for info/proxy/timeout paths
 - **TypeScript** - Full type safety and IntelliSense support with JSDoc comments
-- **Range Requests** - Full support for seeking in audio and video streams
-- **HLS/Adaptive Streaming** - Handle M3U8 playlists and adaptive bitrate streaming
+- **Range Requests** - Forward byte ranges for upstream sources that support them
+- **Bounded HLS Rewriting** - Rewrite standard playlist, segment, key, and map URIs while enforcing the same destination policy
 - **Tree-Shakeable** - Optimized for smaller bundles with dead code elimination
-- **Interactive Demo** - Live testing environment with auto-detection 
+- **Interactive Demo** - Local radio, React, proxy-policy, and telemetry demonstrations
 
 ##  Demos
 
 ### Web Browser Demo
-Visual demonstration of CORS bypass functionality in action:
+Visual demonstration of the local CORS bridge in action:
 
 <p align="center">
-  <img src="assets/visualdemo1.PNG" alt="Web Demo - Overview" width="800"/>
-  <br><em>Complete web interface showing system status and library capabilities</em>
+  <img src="assets/demo-overview.png" alt="Web Demo - Integration Overview" width="800"/>
+  <br><em>Local 1.1.8 development build showing runtime status and the public-host-only default</em>
 </p>
 
 <p align="center">
-  <img src="assets/visualdemo2.PNG" alt="Web Demo - CORS Testing" width="800"/>
-  <br><em>Side-by-side comparison: Direct access fails, proxy access succeeds</em>
+  <img src="assets/demo-radio-lab.png" alt="Web Demo - Radio Integration Lab" width="800"/>
+  <br><em>Radio station switching, visible proxy URLs, and explicit stop and cleanup behavior</em>
 </p>
 
 <p align="center">
-  <img src="assets/visualdemo3.PNG" alt="Web Demo - Code Examples" width="800"/>
-  <br><em>Interactive code examples with copy-to-clipboard functionality</em>
+  <img src="assets/demo-react-radio.png" alt="React Radio Player Demo" width="800"/>
+  <br><em>React hook integration with a real audio element and live runtime status</em>
 </p>
 
 ### CLI Terminal Demo
-Professional terminal interface with real-time CORS testing and browser automation:
+Terminal interface with real CORS checks performed by a Puppeteer-managed
+Chromium process:
 
 <p align="center">
-  <img src="assets/clidemo1.PNG" alt="CLI Demo - Main Interface" width="600"/>
-  <br><em>Interactive command interface with system status and real-time proxy detection</em>
+  <img src="assets/cli-overview.png" alt="CLI Demo - Main Interface" width="800"/>
+  <br><em>Current boot sequence and explicit proxy/security boundaries</em>
 </p>
 
 <p align="center">
-  <img src="assets/clidemo2.PNG" alt="CLI Demo - CORS Testing" width="600"/>
-  <br><em>Real browser CORS testing with actual HTTP requests showing blocked vs allowed URLs</em>
+  <img src="assets/cli-menu.png" alt="CLI Demo - Command Menu" width="800"/>
+  <br><em>Current command menu with package, proxy, environment, and bridge status</em>
 </p>
 
 ### Proxy Server Integration
-Seamless proxy server integration with automatic port detection:
+Standalone loopback proxy output with runtime port reporting:
 
 <p align="center">
-  <img src="assets/cliproxy1.PNG" alt="Proxy Server Status" width="600"/>
-  <br><em>Live proxy server status with health monitoring and configuration details</em>
+  <img src="assets/proxy-server.png" alt="Proxy Server Status" width="800"/>
+  <br><em>Current standalone server output, loopback endpoint, and public-target policy</em>
 </p>
 
->  Try it yourself: Run `npm run demo:cli` for the terminal demo or `npm run demo` for the web demo
+> Try it yourself: run `npm run demo` for the self-building web demo. For the
+> terminal demo, run `npm run build` first, start `npm run proxy:start` in one
+> terminal, then run `npm run demo:cli` in another.
 
 ## The Problem
 
 When building desktop applications with web technologies (Tauri, Electron), developers often face:
 
 1. **CORS Issues**: External audio/video URLs (podcasts, radio streams, video content) are blocked due to Cross-Origin Resource Sharing policies
-2. **Codec Compatibility**: WebKit may not support certain audio/video codecs even with proper GStreamer plugins installed
+2. **Codec Compatibility**: WebKit, Chromium, and platform media stacks do not decode exactly the same formats
 3. **Authentication**: Some media streams require special headers or authentication
 4. **Redirects**: Many podcast/streaming/video URLs use multiple redirects that cause issues
 5. **HLS/Adaptive Streaming**: M3U8 playlists and adaptive bitrate video may fail to load properly
@@ -121,9 +124,11 @@ When building desktop applications with web technologies (Tauri, Electron), deve
 
 Desktop Audio Proxy provides:
 
-- **Automatic CORS bypass** for external audio and video URLs
-- **Universal media streaming** - works with audio (MP3, AAC, WAV) and video (MP4, WebM, M3U8/HLS)
-- **Range request support** - enables seeking in both audio and video
+- **A local CORS bridge** for validated public HTTP(S) audio and video responses
+- **Byte-transparent media transport** for formats the receiving runtime can decode
+- **Runtime source selection** so a station can offer typed WebKit/Chromium fallbacks
+- **Media response normalization** when an upstream labels a known media extension as a generic binary stream
+- **Range request forwarding** for upstream sources that honor byte ranges
 - **Smart redirect handling** with configurable limits
 - **Automatic environment detection** (Tauri/Electron/Web)
 - **Optional info endpoint caching** for faster repeated metadata checks
@@ -139,11 +144,18 @@ yarn add desktop-audio-proxy
 pnpm add desktop-audio-proxy
 ```
 
+> **Release status:** version `1.1.8` is published on npm. A normal
+> `npm install desktop-audio-proxy` installs the release with
+> `createMediaElementController`, `allowedHosts`, and the other documented
+> `1.1.8` additions.
+
 ### Runtime Requirements
 
-- Node.js `>=14` for package compatibility (per `engines`)
-- Node.js `>=18` recommended for built-in `fetch` support
-- If you run in Node.js 14/16, provide a global `fetch` polyfill (for client health/info checks)
+- Node.js `>=14.18` is declared in `engines` because the server's network
+  policy uses `node:net` `BlockList`; automated CI currently verifies Node 20,
+  22, and 24
+- Node.js `>=18` is recommended for built-in `fetch` support
+- If you run in Node.js 14.18+/16, provide a global `fetch` polyfill for client health/info checks
 - React/Vue entry points require their respective framework in your app (`react` or `vue`)
 
 ## Package Exports
@@ -155,7 +167,11 @@ This library provides multiple entry points optimized for different environments
 import { createAudioClient, startProxyServer } from 'desktop-audio-proxy';
 
 // Browser-only entry - excludes server dependencies for smaller bundles
-import { createAudioClient, TauriAudioService } from 'desktop-audio-proxy/browser';
+import {
+  createAudioClient,
+  createMediaElementController,
+  TauriAudioService
+} from 'desktop-audio-proxy/browser';
 
 // Server-only entry - for Node.js environments
 import { startProxyServer, AudioProxyServer } from 'desktop-audio-proxy/server';
@@ -168,7 +184,8 @@ import { startProxyServer, AudioProxyServer } from 'desktop-audio-proxy/server';
 
 ##  Interactive Demo 
 
-**See Desktop Audio Proxy in action!** Our comprehensive demo provides real-time testing with automatic library detection:
+**See the current local integration flow in action.** The full demo builds the
+workspace, starts a loopback proxy, and serves the browser and React pages:
 
 ```bash
 npm run demo             # Build React demo bundle + start full demo server on http://localhost:8080
@@ -187,20 +204,20 @@ npm run demo:serve       # Start static demo server on http://localhost:8080
 - `/examples/react-video-player.tsx` - Legacy path (302 redirect to `react-example.tsx`)
 
 **Demo Features:**
--  **Auto-Detection** - Automatically finds and loads available library builds (local, CDN, various formats)
--  **Version Detection** - Shows current library version with upgrade recommendations
--  **Enhanced Features Showcase** - Live codec detection, metadata extraction, device enumeration
--  **Real-time CORS Testing** - Compare direct URL vs proxy with live playback
--  **Developer Tools** - Exposed internals for manual testing (`window.dapDemo`)
--  **Smart Fallbacks** - Works with any version of the library
--  **Visual Upgrade Guidance** - Clear recommendations when using older versions
+- **Local Proxy Discovery** - Checks the known local development ports and displays `/health` status
+- **Radio Integration Lab** - Exercises fail-closed URL preparation, station switching, stop, and cleanup
+- **Direct/Proxy Comparison** - Reports the browser's direct CORS result beside the validated proxy result
+- **Security Boundaries** - Separates package behavior from host-owned authentication, DRM, codecs, and process lifecycle
+- **React Player Route** - Runs `useAudioUrl` against a real audio element
+- **Developer Tools** - Exposes the small test surface at `window.dapDemo`
+- **Telemetry Dashboard** - Displays events supplied to the dashboard page; it is separate from the radio lab
 
 **What you can test:**
--  **Any audio URL** - Paste podcast, radio, or music URLs
--  **Environment detection** - See if you're in Tauri, Electron, or web
--  **Codec capabilities** - Test what formats your system supports  
--  **Metadata extraction** - View audio file information
--  **Device enumeration** - List available audio devices
+- **Public HTTP(S) media URLs** - Paste a radio, podcast, audio, video, or HLS URL allowed by the proxy policy
+- **Direct versus proxied reachability** - See whether the upstream already permits browser CORS
+- **Proxy health and policy** - Confirm the active local port and private-address setting
+- **Existing-player integration** - Prepare and stop media on the page's real `<audio>` element
+- **React hook behavior** - Switch between the example stations on `/react-player.html`
 
 **Perfect for:**
 -  **Evaluating before installing** - See the value immediately
@@ -214,6 +231,7 @@ npm run demo:serve       # Start static demo server on http://localhost:8080
 **Experience the power in your terminal!** Our CLI demo features professional ASCII art and terminal effects:
 
 ```bash
+npm run build
 npm run demo:cli
 ```
 
@@ -221,7 +239,7 @@ npm run demo:cli
 - **Sick ASCII Art** - Matrix-style banner with terminal effects
 - **Real-time System Status** - Live proxy detection and version info
 - **Audio URL Testing** - Compare direct vs proxy access with detailed analysis
-- **System Diagnostics** - Network scanning, capability testing, version detection
+- **System Diagnostics** - Known-port health checks plus package and environment reporting
 - **Test Results History** - Track all your URL tests with timestamps
 - **Proxy Server Monitoring** - Real-time server status and configuration
 - **Interactive Help** - Built-in documentation and examples
@@ -229,11 +247,11 @@ npm run demo:cli
 
 **CLI Commands:**
 ```
-1) Test Audio URL          - Test any audio URL with CORS bypass
+1) Test Audio URL          - Test a public HTTP(S) media URL allowed by proxy policy
 2) System Diagnostics      - Check library capabilities and network
 3) Proxy Server Status     - Monitor proxy server health
 4) Show Example URLs       - Curated list of test URLs
-5) Advanced Features Demo  - Showcase enhanced v1.1.3 features
+5) Advanced Features Demo  - List current client methods and host-bridge availability
 6) View Test Results       - History of all URL tests
 7) Show Startup Commands   - Display setup commands for full demo
 h) Help & Documentation    - Learn about the library
@@ -244,23 +262,23 @@ q) Quit System            - Exit the CLI
 - **Quick testing** - Fast audio URL validation
 - **Debugging** - Terminal-based diagnostics  
 - **Presentations** - Professional CLI aesthetic for demos
-- **CI/CD pipelines** - Automated testing workflows
-- **Server environments** - No browser needed
+- **Headless environments** - No visible browser window is required, but Puppeteer must be able to launch Chromium
 
 ## Quick Start
 
-### Basic Usage (Automatic Setup)
+### Browser Client (Proxy Already Running)
 
 ```typescript
-import { createAudioClient } from 'desktop-audio-proxy';
+import { createAudioClient } from 'desktop-audio-proxy/browser';
 
-// Create client with auto-detection
-const audioClient = createAudioClient();
+const audioClient = createAudioClient({
+  proxyUrl: 'http://localhost:3002',
+  autoDetect: false,
+  fallbackToOriginal: false
+});
 
-// Convert any audio URL to a playable URL
+// The host application must already have started the proxy.
 const playableUrl = await audioClient.getPlayableUrl('https://example.com/podcast.mp3');
-
-// Use in your audio element
 audioElement.src = playableUrl;
 ```
 
@@ -269,17 +287,115 @@ audioElement.src = playableUrl;
 ```typescript
 import { startProxyServer, createAudioClient } from 'desktop-audio-proxy';
 
-// Start the proxy server
-const proxyServer = await startProxyServer({ port: 3001 });
-
-// Create client that uses the proxy
-const audioClient = createAudioClient({
-  proxyUrl: 'http://localhost:3001'
+// Run this in Node.js, such as an Electron main process.
+const proxyServer = await startProxyServer({
+  host: 'localhost',
+  port: 3001,
+  allowPrivateAddresses: false
 });
 
-// Convert URL
+const audioClient = createAudioClient({
+  proxyUrl: proxyServer.getProxyUrl(),
+  autoDetect: false,
+  fallbackToOriginal: false
+});
+
 const playableUrl = await audioClient.getPlayableUrl('https://example.com/audio.mp3');
+
+// On host shutdown:
+await proxyServer.stop();
 ```
+
+### Existing Radio or Media Player (Recommended)
+
+The media-element controller is the shortest integration path for an existing
+`<audio>` or `<video>` player. It handles URL conversion, playback, station
+switch races, and cleanup. Unlike the lower-level client, it fails closed by
+default instead of silently falling back to a direct URL that may still fail
+CORS.
+
+```typescript
+import { createMediaElementController } from 'desktop-audio-proxy/browser';
+
+const audio = document.querySelector<HTMLAudioElement>('#radio-player');
+if (!audio) throw new Error('Radio player element was not found');
+
+const radio = createMediaElementController(audio, {
+  proxyUrl: 'http://localhost:3002',
+  retryAttempts: 2
+});
+
+await radio.playBest([
+  {
+    url: 'https://stream.example.com/live.aac',
+    type: 'audio/aac',
+    codecs: 'mp4a.40.2'
+  },
+  {
+    url: 'https://stream.example.com/live.mp3',
+    type: 'audio/mpeg'
+  }
+]);
+
+// Switching stations is safe even if an older request finishes later.
+await radio.play('https://stream.example.com/alternative.aac');
+
+radio.stop();
+await radio.dispose(); // also stops a proxy auto-started by this controller
+```
+
+`loadBest()` and `playBest()` prefer sources reported as `probably` playable,
+then `maybe`, while preserving your order within each result. An untyped URL is
+used only as a fallback when no typed candidate is supported. This makes a
+station catalog easier to share across WebKit and Chromium without claiming
+that DAP can add a missing decoder.
+
+### WebKit Compatibility Scope
+
+The `1.1.8` browser entry adds:
+
+- WebKit, Chromium, and Gecko engine detection, including branded iOS browsers
+  that still use WebKit
+- source selection through the real media element's `canPlayType()` result
+- `crossOrigin = 'anonymous'`, `preload = 'metadata'`, and inline-video defaults
+  when the application has not already chosen different values
+- media MIME correction for generic `.m3u8`, `.mp3`, `.m4a`, `.aac`, `.wav`,
+  and `.mp4` upstream responses
+- existing byte-range forwarding and bounded standard-HLS URI rewriting
+
+Local release verification exercises the same renderer in Electron/Chromium,
+Tauri/WebView2 on Windows, and Playwright WebKit 26.5. That proves the
+integration and transport path in those engines. It is not macOS/iOS WKWebView
+certification, and DAP does not provide transcoding, DRM support, or codecs the
+host cannot decode.
+
+Start the proxy in Electron's main process, a Node host process, or a
+Tauri sidecar. Browser/WebView code cannot start a Node server itself:
+
+```typescript
+import { startProxyServer } from 'desktop-audio-proxy/server';
+
+const proxy = await startProxyServer({
+  host: 'localhost',
+  port: 3002,
+  corsOrigins: ['http://localhost:5173'],
+  allowedHosts: [
+    'stream.example.com',
+    '*.trusted-radio-cdn.example'
+  ],
+  allowPrivateAddresses: false,
+  enableLogging: false
+});
+
+// On host application shutdown:
+await proxy.stop();
+```
+
+`allowedHosts` is optional for backward compatibility. When configured, exact
+hostnames and boundary-safe `*.example.com` subdomain patterns are enforced on
+initial requests and redirects. An explicit empty array denies every target.
+HLS stations may use separate CDN hosts for playlists, keys, and segments, so
+include each trusted host or CDN suffix used by your station catalog.
 
 ### Proxy Endpoint Reference
 
@@ -291,16 +407,29 @@ When the proxy server is running (for example at `http://localhost:3002`):
 
 URL validation rules:
 - `url` must be absolute (`http://` or `https://` by default)
-- Private/local targets are blocked by default unless `allowPrivateAddresses: true`
+- URL credentials are rejected
+- Optional `allowedHosts` rules constrain initial and redirected destinations
+- Literal IPs, DNS results, and redirect targets are checked; private, loopback,
+  link-local, reserved, and other non-public addresses are blocked by default
+- Set `allowPrivateAddresses: true` only for trusted internal media sources
 
-### Video Streaming (MP4, M3U8/HLS, WebM)
+### Video Transport (MP4, M3U8/HLS, WebM)
 
-DAP fully supports video streaming with the same simple API:
+DAP can proxy video responses with the same URL API. This does not add codecs,
+DRM, transcoding, or HLS playback support to the receiving runtime:
 
 ```typescript
 import { createAudioClient } from 'desktop-audio-proxy';
 
-const audioClient = createAudioClient({ autoStartProxy: true });
+// Node.js only. Browser/WebView code must use a host-managed proxy.
+const audioClient = createAudioClient({
+  autoStartProxy: true,
+  fallbackToOriginal: false,
+  proxyServerConfig: {
+    host: 'localhost',
+    allowPrivateAddresses: false
+  }
+});
 
 // MP4 video streaming
 const videoUrl = await audioClient.getPlayableUrl('https://example.com/video.mp4');
@@ -315,13 +444,21 @@ const webmUrl = await audioClient.getPlayableUrl('https://example.com/video.webm
 videoElement.src = webmUrl;
 ```
 
-**Video features automatically supported:**
- - Range requests for seeking
+HLS manifests are bounded to 2 MiB and their relative variant, segment, key,
+and map URIs are rewritten through the proxy. Nested playlists therefore retain
+the same destination policy as direct proxy requests. The media element or an
+HLS playback library must still understand the playlist; third-party HLS
+dialects have not been exhaustively validated.
+
+**Transport behavior provided by DAP:**
+ - Range request forwarding when the upstream supports ranges
  - M3U8/HLS playlists (master and media playlists)
- - Adaptive bitrate streaming
- - All video codecs (H.264, H.265, VP8, VP9, AV1)
- - Content-Type detection and proxying
- - Video metadata extraction via `/info` endpoint
+ - URI rewriting needed by standard adaptive playlists
+ - Byte-transparent media delivery; actual codec support depends on the WebView,
+   Electron, browser, and operating-system decoder
+ - Content-Type preservation plus known-extension correction when an upstream
+   returns a generic binary or plain-text type
+ - Upstream status and response-header inspection via `/info`
 
 **React Video Example:**
 
@@ -346,16 +483,20 @@ function VideoPlayer({ url }) {
 
 ## Examples Directory
 
-- **React Hooks Demo:** See the full React example at [examples/react-example.tsx](examples/react-example.tsx). It demonstrates `useAudioProxy`, `useAudioUrl`, capabilities checks, proxy status monitoring, and provider-based setup.
+- **Existing browser player:** [examples/browser-radio-player.ts](examples/browser-radio-player.ts) uses `createMediaElementController` for race-safe station switching and cleanup.
+- **React:** [examples/react-example.tsx](examples/react-example.tsx) uses `useAudioUrl` with an actual audio element.
+- **Vue:** [examples/vue-example.vue](examples/vue-example.vue) uses `useAudioProxy` with reactive status and retry handling.
+- **Desktop shells:** See the Electron and Tauri examples in the complete example list below for their secure process boundaries.
 
 To view the React demo locally with the bundled demo server:
 
 ```bash
 npm run demo
-# then open http://localhost:8080 in your browser and navigate to the examples folder
+# then open http://localhost:8080/react-player.html
 ```
 
-If you prefer to open the example file directly in your project, the demo web server serves files under `/examples/` (e.g. http://localhost:8080/examples/react-example.tsx) so you can fetch the source from the running demo server.
+The demo web server also serves source files under `/examples/` (for example,
+`http://localhost:8080/examples/react-example.tsx`).
 
 ## Migration Notes
 
@@ -371,9 +512,12 @@ Recent non-breaking compatibility updates:
 These defaults are intentionally conservative. Keep them unless you have a trusted internal-network use case:
 
 - `allowedProtocols: ['http', 'https']` (rejects other protocols)
-- `allowPrivateAddresses: false` (blocks localhost/RFC1918/link-local targets to reduce SSRF risk)
+- `allowedHosts` omitted by default; configure exact station hosts or
+  `*.trusted-cdn.example` patterns for a curated catalog
+- `allowPrivateAddresses: false` (checks literal, DNS-resolved, and redirect targets to reduce SSRF risk)
 - `maxRedirects: 10` (limits redirect-chain abuse)
 - `timeout: 60000` (bounds long-running upstream requests)
+- `maxCacheEntries: 256` (bounds the in-memory metadata cache)
 - `host: 'localhost'` by default (proxy is local-only unless you explicitly change it)
 
 Production recommendations:
@@ -387,17 +531,31 @@ Production recommendations:
 ### Tauri Integration
 
 ```typescript
-import { TauriAudioService } from 'desktop-audio-proxy';
+import { createMediaElementController } from 'desktop-audio-proxy/browser';
 
-const audioService = new TauriAudioService({
-  // Automatically uses proxy in dev, direct URLs in production
-  autoDetect: true
+// Implement this as a narrow trusted Tauri command after starting your sidecar.
+const proxyUrl = await getProxyUrlFromTauriHost();
+
+const radio = createMediaElementController(audioElement, {
+  proxyUrl,
+  autoDetect: false,
+  autoStartProxy: false,
+  fallbackToOriginal: false
 });
 
-// Works for both audio and video
-const streamUrl = await audioService.getStreamableUrl(originalUrl);
-audioElement.src = streamUrl; // or videoElement.src
+await radio.load(originalUrl);
+
+// On component/window teardown:
+await radio.dispose();
 ```
+
+The package does not start a Node process from a Tauri WebView. Your Tauri host
+must start and stop a sidecar or equivalent local service, then expose only the
+resulting proxy URL through a narrow command. See
+[`examples/tauri-integration.js`](examples/tauri-integration.js).
+The repository also contains a minimal compiled Tauri 2 smoke host under
+`test/native/tauri`; it is a verification fixture, not code shipped in the npm
+package.
 
 ### Auto-Start Proxy (Node.js Only)
 
@@ -408,9 +566,12 @@ import { createAudioClient } from 'desktop-audio-proxy';
 
 const audioClient = createAudioClient({
   autoStartProxy: true, // Automatically starts proxy when needed
+  fallbackToOriginal: false,
   proxyServerConfig: {
+    host: 'localhost',
     port: 3002,
-    corsOrigins: '*',
+    corsOrigins: ['http://localhost:5173'],
+    allowPrivateAddresses: false,
     enableLogging: false
   }
 });
@@ -418,7 +579,7 @@ const audioClient = createAudioClient({
 // That's it! The proxy starts automatically when needed
 const playableUrl = await audioClient.getPlayableUrl('https://example.com/audio.mp3');
 
-// Clean up when done (optional - automatically cleaned on process exit)
+// Clean up during application shutdown
 await audioClient.stopProxyServer();
 ```
 
@@ -426,17 +587,20 @@ await audioClient.stopProxyServer();
 1. Client checks if proxy server is available
 2. If not available and `autoStartProxy` is enabled, starts proxy automatically
 3. Only happens in Node.js environments (browser-safe)
-4. Server stops when your app closes, or manually with `stopProxyServer()`
+4. Your application calls `stopProxyServer()` during shutdown to release the
+   socket and permanently prevent that client instance from auto-starting
+   another server; create a new client if auto-start is needed again
 
 ### Electron Integration
 
-```typescript
-import { ElectronAudioService } from 'desktop-audio-proxy';
-
-const audioService = new ElectronAudioService();
-
-const streamUrl = await audioService.getStreamableUrl(originalUrl);
-```
+Start the proxy in Electron's main process, expose only `getProxyUrl()` through
+a context-isolated preload bridge, and use the media-element controller in the
+renderer. The complete three-file boundary is shown in
+[`electron-integration.js`](examples/electron-integration.js),
+[`electron-preload.cjs`](examples/electron-preload.cjs), and
+[`electron-renderer.ts`](examples/electron-renderer.ts).
+The context-isolated runtime fixture under `test/native/electron` verifies the
+renderer/proxy/media path without enabling Node integration.
 
 ## Advanced Configuration
 
@@ -444,39 +608,44 @@ const streamUrl = await audioService.getStreamableUrl(originalUrl);
 const audioClient = createAudioClient({
   proxyUrl: 'http://localhost:3002',
   autoDetect: true,
-  fallbackToOriginal: true,
+  // Recommended for curated desktop media: surface proxy failures.
+  fallbackToOriginal: false,
   retryAttempts: 3,
   retryDelay: 1000,
   
   // Optional proxy server config
   proxyServerConfig: {
+    host: 'localhost',
     port: 3002,
-    corsOrigins: '*',
+    corsOrigins: ['http://localhost:5173'],
     timeout: 60000,
     maxRedirects: 20,
     allowedProtocols: ['http', 'https'],
+    allowedHosts: ['stream.example.com', '*.trusted-radio-cdn.example'],
     allowPrivateAddresses: false,
-    enableLogging: true,
+    enableLogging: false,
     cacheEnabled: true,
-    cacheTTL: 3600
+    cacheTTL: 3600,
+    maxCacheEntries: 256
   }
 });
 ```
 
 ## Debugging
 
-Need to see what's happening under the hood? Built-in debugger makes it easy:
+The debugger is an opt-in categorized log store. It records entries written
+through the debugger instance; it does not automatically intercept the
+package's existing `console` messages:
 
 ```typescript
 import { enableDebug, getDebugger } from 'desktop-audio-proxy';
 
 // Quick enable with defaults
-enableDebug('debug'); // Logs everything
+const debug = enableDebug('debug');
 
-// Or customize what you see
-enableDebug('info', ['client', 'proxy', 'network']);
+debug.info('client', 'Preparing station', { stationId: 'groove-salad' });
 
-// Get the debugger instance for advanced control
+// The same singleton can be retrieved elsewhere.
 const debugger = getDebugger();
 
 // View logs
@@ -493,7 +662,7 @@ import { disableDebug } from 'desktop-audio-proxy';
 disableDebug();
 ```
 
-**Debug Categories:**
+**Available category labels:**
 - `client` - Client initialization and URL processing
 - `server` - Proxy server operations
 - `proxy` - Proxy request/response handling
@@ -525,7 +694,9 @@ const debugger = getDebugger({
 
 ## Telemetry
 
-Track performance and usage patterns with the optional telemetry system. All data stays local unless you explicitly send it somewhere. This is useful for monitoring your audio streaming performance, debugging issues, and understanding how users interact with your audio features.
+Track client lifecycle, proxy checks, URL conversion, errors, and measured
+operation durations with the optional telemetry callback. Events stay inside
+your process unless your callback sends them elsewhere.
 
 ### Basic Setup
 
@@ -599,9 +770,10 @@ const audioClient = createAudioClient({
 }
 ```
 
-### Real-World Integration
+### Sending Events Elsewhere
 
-Send telemetry data to your analytics service:
+The callback runs synchronously. Queue remote analytics work and review event
+data for your privacy requirements before sending it:
 
 ```typescript
 const audioClient = createAudioClient({
@@ -610,22 +782,12 @@ const audioClient = createAudioClient({
     trackPerformance: true,
     trackErrors: true,
     onEvent: (event) => {
-      // Send to Google Analytics
-      gtag('event', event.type, {
-        event_category: 'audio_proxy',
-        event_label: event.data?.url,
-        value: event.data?.duration
+      queueMicrotask(() => {
+        analytics.track('desktop_audio_proxy', {
+          type: event.type,
+          duration: event.data?.duration
+        });
       });
-
-      // Or send to your own backend
-      fetch('/api/analytics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(event)
-      });
-
-      // Or send to Mixpanel
-      mixpanel.track(event.type, event.data);
     }
   }
 });
@@ -634,26 +796,32 @@ const audioClient = createAudioClient({
 ### Metrics You Can Track
 
 - **Success Rate** - Percentage of successful URL conversions
-- **Average Response Time** - How fast the proxy responds
+- **Operation Duration** - Timing emitted for instrumented client operations
 - **Error Rate** - How often conversions fail
-- **Proxy Availability** - Uptime of your proxy server
-- **User Behavior** - What audio sources your users access most
+- **Proxy Availability** - Results of client health checks
+- **Requested Sources** - Only if your application intentionally retains the diagnostic URL data
 
 ### Privacy and Performance
 
-Telemetry is completely optional and disabled by default. When enabled, all data stays in your application unless you choose to send it elsewhere via the `onEvent` callback. The telemetry system adds minimal overhead (less than 1ms per operation) and does not slow down your audio playback.
+Telemetry is optional and disabled by default. The callback is synchronous, so
+its cost depends on your handler. Keep it small, avoid logging private station
+URLs or user data, and queue network delivery outside the callback.
 
 ## Framework Integration
 
 ### React Hooks
 
-Seamless React integration with automatic state management:
+React integration with loading, error, retry, stale-result, and cleanup state:
 
 ```jsx
 import { useAudioProxy, useAudioCapabilities } from 'desktop-audio-proxy/react';
 
 function AudioPlayer({ url }) {
-  const { audioUrl, isLoading, error, retry } = useAudioProxy(url);
+  const { audioUrl, isLoading, error, retry } = useAudioProxy(url, {
+    proxyUrl: 'http://localhost:3002',
+    autoDetect: false,
+    fallbackToOriginal: false
+  });
   const { capabilities } = useAudioCapabilities();
   
   if (isLoading) return <div>Loading...</div>;
@@ -662,16 +830,30 @@ function AudioPlayer({ url }) {
   return <audio controls src={audioUrl} />;
 }
 
-// Advanced usage with provider
-import { AudioProxyProvider } from 'desktop-audio-proxy/react';
+```
+
+`AudioProxyProvider` exposes a shared client through
+`useAudioProxyContext()`. `useAudioProxy()` does not currently inherit provider
+defaults, so pass its options directly as shown above:
+
+```jsx
+import {
+  AudioProxyProvider,
+  useAudioProxyContext
+} from 'desktop-audio-proxy/react';
+
+function ActiveProxy() {
+  const { client } = useAudioProxyContext();
+  return <code>{client.getProxyUrl()}</code>;
+}
 
 function App() {
   return (
-    <AudioProxyProvider options={{ 
+    <AudioProxyProvider options={{
       proxyUrl: 'http://localhost:3002',
-      retryAttempts: 3 
+      fallbackToOriginal: false
     }}>
-      <AudioPlayer url="https://example.com/audio.mp3" />
+      <ActiveProxy />
     </AudioProxyProvider>
   );
 }
@@ -679,9 +861,9 @@ function App() {
 
 **Available React Hooks:**
 - `useAudioProxy(url)` - Complete audio URL processing with loading states
-- `useAudioCapabilities()` - System codec detection and device enumeration  
+- `useAudioCapabilities()` - Browser codec probing plus optional host-provided device/system data
 - `useProxyStatus()` - Real-time proxy server monitoring
-- `useAudioMetadata(filePath)` - Audio file metadata extraction (Tauri/Electron)
+- `useAudioMetadata(filePath)` - Host-provided metadata bridge for Tauri/Electron
 
 ### Vue Composables
 
@@ -693,7 +875,11 @@ import { ref } from 'vue';
 import { useAudioProxy, useAudioCapabilities } from 'desktop-audio-proxy/vue';
 
 const url = ref('https://example.com/audio.mp3');
-const { audioUrl, isLoading, error, retry } = useAudioProxy(url);
+const { audioUrl, isLoading, error, retry } = useAudioProxy(url, {
+  proxyUrl: 'http://localhost:3002',
+  autoDetect: false,
+  fallbackToOriginal: false
+});
 const { capabilities } = useAudioCapabilities();
 </script>
 
@@ -709,9 +895,9 @@ const { capabilities } = useAudioCapabilities();
 
 **Available Vue Composables:**
 - `useAudioProxy(url)` - Reactive audio URL processing with Vue refs
-- `useAudioCapabilities()` - Reactive system capabilities detection
+- `useAudioCapabilities()` - Reactive browser codec probing plus optional host data
 - `useProxyStatus()` - Reactive proxy server status monitoring
-- `useAudioMetadata(filePath)` - Reactive metadata extraction (Tauri/Electron)
+- `useAudioMetadata(filePath)` - Reactive host-provided metadata bridge
 
 ### Vue Plugin Pattern
 
@@ -728,7 +914,8 @@ app.use(
   createAudioProxy({
     defaultOptions: {
       proxyUrl: 'http://localhost:3002',
-      retryAttempts: 3
+      retryAttempts: 3,
+      fallbackToOriginal: false
     }
   })
 );
@@ -758,6 +945,33 @@ class AudioProxyClient {
 }
 ```
 
+### MediaElementController
+
+```typescript
+interface MediaElementController {
+  // Returns null when superseded by a newer load/play/stop request.
+  load(url: string): Promise<string | null>;
+  play(url: string): Promise<string | null>;
+  stop(): void;
+  dispose(): Promise<void>;
+}
+
+function createMediaElementController(
+  element: HTMLMediaElement,
+  options?: AudioProxyOptions
+): MediaElementController;
+
+// Detect the current engine and choose among typed fallback sources
+function detectMediaEngine(userAgent?: string): MediaEngine;
+function selectPlayableMediaSource(
+  element: HTMLMediaElement,
+  candidates: readonly MediaSourceCandidate[]
+): MediaSourceCandidate;
+```
+
+The controller uses `fallbackToOriginal: false` unless explicitly overridden.
+After `dispose()`, new load or play requests are rejected.
+
 ### TauriAudioService
 
 ```typescript
@@ -772,7 +986,7 @@ class TauriAudioService {
   getEnvironment(): Environment;
   isProxyAvailable(): Promise<boolean>;
   
-  // Enhanced v1.1.0 Features
+  // Browser codec probing plus optional Tauri command data
   checkSystemCodecs(): Promise<{
     supportedFormats: string[];
     missingCodecs: string[];
@@ -806,7 +1020,7 @@ class ElectronAudioService {
   getEnvironment(): Environment;
   isProxyAvailable(): Promise<boolean>;
   
-  // Enhanced v1.1.0 Features
+  // Browser codec probing plus optional Electron preload data
   checkSystemCodecs(): Promise<{
     supportedFormats: string[];
     missingCodecs: string[];
@@ -830,6 +1044,12 @@ class ElectronAudioService {
   } | null>;
 }
 ```
+
+`checkSystemCodecs()` always has the browser's `canPlayType()` result.
+`getAudioMetadata()`, `getAudioDevices()`, Electron system settings, and the
+extra native capability data require commands or preload methods implemented
+by your host application. This package defines and calls those bridges; it does
+not ship the native metadata extractor or device enumerator itself.
 
 ### AudioProxyServer
 
@@ -858,6 +1078,12 @@ function startProxyServer(config?: ProxyConfig): Promise<AudioProxyServer>;
 
 // Create server instance without starting
 function createProxyServer(config?: ProxyConfig): AudioProxyServer;
+
+// Bind proxy URL resolution and lifecycle to an existing audio/video element
+function createMediaElementController(
+  element: HTMLMediaElement,
+  options?: AudioProxyOptions
+): MediaElementController;
 ```
 
 ## Testing
@@ -877,8 +1103,27 @@ npm run test:coverage
 # Verify package exports and server startup helpers
 npm run verify:exports
 
+# Compile the public declarations as a strict NodeNext consumer
+npm run verify:types
+
+# Compile and smoke-check every integration example
+npm run verify:examples
+
+# Check README example references and local links
+npm run verify:docs
+
 # Smoke test demo routes (includes legacy redirect checks)
 npm run test:demo-smoke
+
+# Build and launch the context-isolated Electron host
+npm run test:native:electron
+
+# Compile and launch the Tauri 2 host (requires Rust/Cargo and WebView2)
+npm run test:native:tauri
+
+# Run the engine-level Playwright WebKit media/range smoke
+# First-time setup: npx playwright install webkit
+npm run test:webkit
 
 # Build and run all tests
 npm run test:all
@@ -891,6 +1136,9 @@ npm run test:all
 You can run a standalone proxy server using the included example:
 
 ```bash
+# Build the ignored/generated dist output first
+npm run build
+
 # Start standalone proxy server
 npm run proxy:start
 
@@ -900,17 +1148,22 @@ node examples/standalone-server.js
 
 ### Complete Integration Examples
 
-The `examples/` directory contains full integration examples updated for v1.1.0:
+The `examples/` directory contains focused integrations for the supported app
+styles and desktop security boundaries:
 
-- **`standalone-server.js`** - Production-ready proxy server with v1.1.0 configuration
-- **`tauri-integration.js`** - Complete Tauri app integration with enhanced codec detection and metadata extraction
-- **`electron-integration.js`** - Electron main/renderer process setup with audio device enumeration
+- **[`browser-radio-player.ts`](examples/browser-radio-player.ts)** - Drop-in controller for an existing `<audio>` player
+- **[`react-example.tsx`](examples/react-example.tsx)** - React hook integration with loading, retry, and playback state
+- **[`vue-example.vue`](examples/vue-example.vue)** - Vue composable integration with reactive status
+- **[`standalone-server.js`](examples/standalone-server.js)** - Local-only standalone proxy server configuration
+- **[`video-streaming.js`](examples/video-streaming.js)** - Video, range request, and HLS usage
+- **[`electron-integration.js`](examples/electron-integration.js)** - Electron main-process proxy lifecycle
+- **[`electron-preload.cjs`](examples/electron-preload.cjs)** - Narrow context-isolated preload bridge
+- **[`electron-renderer.ts`](examples/electron-renderer.ts)** - Renderer-side controller and cleanup
+- **[`tauri-integration.js`](examples/tauri-integration.js)** - Tauri frontend and sidecar lifecycle boundary
 
-**v1.1.0 Example Features:**
-- Enhanced codec detection usage
-- Audio metadata extraction examples  
-- Device enumeration integration
-- System audio settings management
+The server examples keep the proxy on localhost, restrict browser origins, and
+show `allowedHosts` for curated station catalogs. Add every trusted playlist,
+segment, key, or CDN host used by your media sources.
 
 ## Troubleshooting
 
@@ -923,18 +1176,23 @@ The `examples/` directory contains full integration examples updated for v1.1.0:
 ### Debug Mode
 
 ```typescript
-const audioClient = createAudioClient({
-  proxyServerConfig: {
-    enableLogging: true
-  }
-});
+import {
+  createAudioClient,
+  enableDebug,
+  TauriAudioService,
+  ElectronAudioService
+} from 'desktop-audio-proxy';
 
-// Enable debug logs
+const audioClient = createAudioClient();
+
+// Enable the debugger store, then write categorized application entries.
 if (process.env.NODE_ENV === 'development') {
-  audioClient.enableDebug();
+  const debug = enableDebug('debug');
+  debug.info('client', 'Inspecting runtime capabilities');
 }
 
-// v1.1.0: Enhanced debugging with feature detection
+// Browser codec probing works directly. Extra native results require your
+// Tauri commands or Electron preload bridge.
 const environment = audioClient.getEnvironment();
 if (environment === 'tauri') {
   const service = new TauriAudioService();
@@ -960,6 +1218,7 @@ npm run build:react-demo
 npm run demo:serve
 
 # Terminal demo with ASCII art + diagnostics
+npm run build
 npm run demo:cli
 ```
 
@@ -983,7 +1242,6 @@ npm run dev
 - `dist/server.{esm.js,cjs}` - Server-only functionality
 - `dist/react.{esm.js,cjs}` - React hooks entry
 - `dist/vue.{esm.js,cjs}` - Vue composables entry
-- `dist/server.js` - Legacy server compatibility build
 - `dist/*.d.ts` - TypeScript definitions for all variants
 
 ### Project Structure
@@ -995,6 +1253,8 @@ src/
 |-- server.ts           # Server-only exports
 |-- client.ts           # AudioProxyClient implementation
 |-- server-impl.ts      # AudioProxyServer implementation
+|-- media-element.ts    # Existing-player controller and lifecycle
+|-- media-compatibility.ts # Runtime engine and source selection
 |-- tauri-service.ts    # Tauri-specific service
 |-- electron-service.ts # Electron-specific service
 |-- react.ts            # React hooks entry
@@ -1012,10 +1272,27 @@ npm run lint
 npm run build
 npm test -- --runInBand
 npm run verify:exports
+npm run verify:types
+npm run verify:examples
+npm run verify:docs
 npm run build:react-demo
 npm run test:demo-smoke
+npm run verify:package
+npm run test:native:electron
+npm run test:native:tauri
+npm run test:webkit
 npm pack --dry-run
 ```
+
+The native commands are Windows release gates here. A macOS WKWebView run is a
+separate platform-certification gate, not implied by the WebKit engine smoke.
+
+The publish workflow uses npm Trusted Publishing (OIDC), so it does not need an
+`NPM_TOKEN` secret or a write token in this repository. In the npm package
+settings, configure the GitHub Actions trusted publisher for user `Bandonker`,
+repository `desktop-audio-proxy`, and workflow filename `publish.yml`. Leave the
+environment blank unless the workflow is later assigned a matching GitHub
+environment.
 
 ### Contributing
 
@@ -1043,5 +1320,3 @@ MIT License - see [LICENSE](LICENSE) for details.
 <div align="center">
   <sub>Made with &#10084;&#65039; by Bandonker</sub>
 </div>
-
-

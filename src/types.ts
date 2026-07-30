@@ -6,11 +6,18 @@ export interface ProxyConfig {
   maxRedirects?: number;
   userAgent?: string;
   allowedProtocols?: Array<'http' | 'https'>;
+  /**
+   * Optional exact hosts or `*.example.com` subdomain patterns.
+   * Omit to allow any otherwise-safe public host; an empty array denies all.
+   */
+  allowedHosts?: string[];
   allowPrivateAddresses?: boolean;
   enableLogging?: boolean;
+  /** @deprecated Transcoding is not implemented. The server rejects `true`. */
   enableTranscoding?: boolean;
   cacheEnabled?: boolean;
   cacheTTL?: number;
+  maxCacheEntries?: number;
 }
 
 export interface TelemetryOptions {
