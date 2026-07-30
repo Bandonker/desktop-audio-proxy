@@ -43,11 +43,11 @@ assert(
   'README is missing the proxy host allowlist guidance'
 );
 assert(
-  readme.includes('source tree declares version `1.1.9`') &&
-    readme.includes('npm `latest` is `1.1.8`') &&
+  readme.includes('version `1.1.9` is published as npm `latest`') &&
+    readme.includes('`npm install desktop-audio-proxy` resolves `1.1.9`') &&
     readme.includes('`npm view desktop-audio-proxy version`') &&
     readme.includes('`npm install desktop-audio-proxy@1.1.9`'),
-  'README must distinguish the 1.1.9 candidate from npm latest'
+  'README must state the verified 1.1.9 npm latest status'
 );
 assert(
   /does\s+not ship the native metadata extractor/.test(readme),
