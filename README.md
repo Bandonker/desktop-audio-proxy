@@ -144,10 +144,10 @@ yarn add desktop-audio-proxy
 pnpm add desktop-audio-proxy
 ```
 
-> **Release status:** version `1.1.8` is published on npm. A normal
-> `npm install desktop-audio-proxy` installs the release with
+> **Package release:** version `1.1.9` contains
 > `createMediaElementController`, `allowedHosts`, and the other documented
-> `1.1.8` additions.
+> `1.1.8` additions plus the `1.1.9` review fixes. Install that exact version
+> with `npm install desktop-audio-proxy@1.1.9`.
 
 ### Runtime Requirements
 

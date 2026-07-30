@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.9] - 2026-07-29
+
 ### Fixed
 
 - Kept React hook and provider auto-start clients alive across development
