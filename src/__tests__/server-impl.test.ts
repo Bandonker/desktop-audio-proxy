@@ -172,7 +172,7 @@ describe('AudioProxyServer', () => {
       expect(response.status).toBe(200);
       expect(response.data).toMatchObject({
         status: 'ok',
-        version: '1.1.8',
+        version: '1.1.9',
         config: {
           port: server.getActualPort(),
           configuredPort: testPort,
@@ -246,7 +246,7 @@ describe('AudioProxyServer', () => {
         });
         expect(response.data.headers['set-cookie']).toBeUndefined();
         expect(response.data.headers['x-internal-token']).toBeUndefined();
-        expect(upstreamUserAgent).toBe('AudioProxy/1.1.8');
+        expect(upstreamUserAgent).toBe('AudioProxy/1.1.9');
       } finally {
         await stopLocalUpstreamServer(upstreamServer);
       }

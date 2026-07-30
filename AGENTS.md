@@ -2,18 +2,17 @@
 
 ## Project Status
 
-Current milestone: version 1.1.8 is published to npm and GitHub with OIDC
-provenance. PR #7 includes unreleased review fixes that require a 1.1.9 patch
-release after merge.
+Current milestone: version 1.1.9 release candidate. Version 1.1.8 is published
+to npm and GitHub with OIDC provenance; the review fixes merged through PR #7
+are staged for the 1.1.9 patch release.
 
 Known blockers: macOS/iOS WKWebView has not been run; the independent WebKit
 engine smoke is not native Apple platform certification.
 
-Next highest-leverage step: merge PR #7 after its checks pass, then prepare and
-publish version 1.1.9 through the configured Trusted Publisher for
-`Bandonker/desktop-audio-proxy` and `publish.yml`; do not add an `NPM_TOKEN`
-write secret. Run the native Apple WKWebView smoke when macOS hardware is
-available.
+Next highest-leverage step: publish version 1.1.9 through the configured
+Trusted Publisher for `Bandonker/desktop-audio-proxy` and `publish.yml`; do not
+add an `NPM_TOKEN` write secret. Run the native Apple WKWebView smoke when
+macOS hardware is available.
 
 ## How To Run
 
